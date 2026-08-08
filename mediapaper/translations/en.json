@@ -1,0 +1,100 @@
+{
+  "all_outputs": "All Outputs",
+  "counts": "{images} images · {videos} videos",
+  "empty": "No images or videos found in the configured directories",
+  "empty_filter": "Nothing matches this filter",
+  "filter_all": "All",
+  "filter_images": "Images",
+  "filter_videos": "Videos",
+  "not_installed": "mpvpaper is not installed",
+  "not_installed_hint": "mpvpaper is not installed: videos cannot be played, images still work",
+  "output": "Output",
+  "pause": "Pause",
+  "rescan": "Rescan directories",
+  "resume": "Resume",
+  "settings": {
+    "allowed_cpus": {
+      "label": "Allowed CPUs"
+    },
+    "auto_pause": {
+      "description": "Pause playback while a fullscreen window covers the wallpaper (mpvpaper --auto-pause)",
+      "label": "Pause When Covered"
+    },
+    "cpu_quota": {
+      "label": "CPU Quota"
+    },
+    "cpu_weight": {
+      "label": "CPU Weight"
+    },
+    "extra_directory": {
+      "description": "Optional second folder to scan, for keeping images and videos apart; leave empty to use one source",
+      "label": "Extra Directory"
+    },
+    "extract_last_frame": {
+      "description": "Extract a frame from the video to use as the static wallpaper when playback stops; off falls back to whatever wallpaper the host already has",
+      "label": "Static Fallback Frame"
+    },
+    "fit_mode": {
+      "description": "How a video is framed when its aspect ratio does not match the output. Fill crops the overflowing edges; Fit letterboxes instead, which keeps a video no larger than the screen pixel-for-pixel sharp; Stretch distorts it to fit exactly",
+      "fill": "Fill (crop to cover)",
+      "fit": "Fit (letterbox)",
+      "label": "Fit Mode",
+      "stretch": "Stretch (ignore aspect ratio)"
+    },
+    "glsl_shader": {
+      "description": "Optional mpv GLSL user shader to run on the video, for upscalers such as Anime4K, FSRCNNX or ravu. Costs more GPU than any built-in scaler and the path cannot contain spaces",
+      "label": "GLSL Shader"
+    },
+    "glyph": {
+      "label": "Glyph"
+    },
+    "keep_host_wallpaper": {
+      "description": "Keep the host wallpaper alive underneath a playing video, set to the video's still frame. The video covers it, and Noctalia panels that draw the current wallpaper (such as the control center user card) keep working. Off drops the host surface to save a texture",
+      "label": "Keep Host Wallpaper"
+    },
+    "hardware_decode": {
+      "description": "Use GPU video decoding (mpv hwdec=auto)",
+      "label": "Hardware Decoding"
+    },
+    "max_depth": {
+      "description": "How many levels below each source folder to walk",
+      "label": "Search Depth"
+    },
+    "media_directory": {
+      "description": "Folder scanned for wallpaper images and videos; defaults to the wallpaper folder from your Noctalia settings",
+      "label": "Media Directory"
+    },
+    "memory_max": {
+      "label": "Max Memory"
+    },
+    "mpv_options": {
+      "description": "Additional space-separated mpv options, e.g. panscan=1.0 video-zoom=0.1",
+      "label": "Extra mpv Options"
+    },
+    "mute": {
+      "label": "Mute Audio"
+    },
+    "nice": {
+      "label": "Nice Value"
+    },
+    "recursive": {
+      "description": "Walk subfolders too, so one directory containing videos/ and images/ lists everything",
+      "label": "Search Subfolders"
+    },
+    "render_quality": {
+      "default": "Default",
+      "description": "High switches mpv to a sharper scaler and turns on debanding, which is worth it when a video is smaller than the screen and has to be scaled up. It runs on every frame, so it draws GPU power the whole time the wallpaper plays",
+      "high": "High",
+      "label": "Render Quality"
+    },
+    "run_as_systemd": {
+      "description": "Run the wallpaper in a systemd transient scope to enforce strict resource limits",
+      "label": "Run as systemd Service"
+    }
+  },
+  "stop": "Stop",
+  "title": "Media Wallpaper",
+  "truncated": "Showing the first {count} files. Narrow the directories or reduce the search depth",
+  "unreadable": "None of the configured directories could be read",
+  "unsupported_file": "Not a supported image or video: {name}"
+}

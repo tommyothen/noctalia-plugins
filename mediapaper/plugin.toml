@@ -1,0 +1,226 @@
+# Media wallpaper. One picker for still images and videos.
+#
+# A headless [[service]] owns the per-output assignments and routes by file type:
+# images go straight to the host through noctalia.setWallpaper, videos go through
+# an mpvpaper instance supervised per output. When a video is assigned, the service
+# leaves the video's extracted still frame on the host wallpaper underneath the
+# mpvpaper surface, which composites on top of it. Turning off keep_host_wallpaper
+# drops the host surface instead (noctalia.setWallpaperEnabled), which saves a
+# texture but blanks host UI that reads the current wallpaper.
+# The [[panel]] is the picker and the bar [[widget]] opens it.
+#
+# Derived from noctalia/mpvpaper 1.0.7 (MIT), extended with image support, recursive
+# directory scanning, a second source directory, and auto-release when the wallpaper
+# is changed from outside the plugin.
+#
+# Videos need the external `mpvpaper` command. `mpv` renders every grid thumbnail, image
+# tiles included, and `ffmpeg` extracts the full size still frame that sits under, and
+# outlives, a playing video. Setting an image needs none of them, only its tile does.
+# The plugin degrades to an image-only picker when mpvpaper is absent.
+
+id = "tommyothen/mediapaper"
+name = "Media Wallpaper"
+version = "1.0.0"
+plugin_api = 9
+author = "tommyothen"
+license = "MIT"
+dependencies = ["mpvpaper", "mpv"]
+tags = ["wallpaper", "video", "media", "panel"]
+icon = "photo-video"
+description = "One picker for image and video wallpapers; videos play through mpvpaper."
+
+# ── Sources ───────────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "media_directory"
+type = "folder"
+label_key = "settings.media_directory.label"
+description_key = "settings.media_directory.description"
+default = ""
+
+[[setting]]
+key = "extra_directory"
+type = "folder"
+label_key = "settings.extra_directory.label"
+description_key = "settings.extra_directory.description"
+default = ""
+
+[[setting]]
+key = "recursive"
+type = "bool"
+label_key = "settings.recursive.label"
+description_key = "settings.recursive.description"
+default = true
+
+[[setting]]
+key = "max_depth"
+type = "int"
+label_key = "settings.max_depth.label"
+description_key = "settings.max_depth.description"
+default = 4
+min = 1
+max = 12
+step = 1
+visible_when = { key = "recursive", values = ["true"] }
+
+# ── Playback ──────────────────────────────────────────────────────────────────
+
+[[setting]]
+key = "mute"
+type = "bool"
+label_key = "settings.mute.label"
+default = true
+
+[[setting]]
+key = "fit_mode"
+type = "select"
+label_key = "settings.fit_mode.label"
+description_key = "settings.fit_mode.description"
+default = "fill"
+
+  [[setting.options]]
+  value = "fill"
+  label_key = "settings.fit_mode.fill"
+
+  [[setting.options]]
+  value = "fit"
+  label_key = "settings.fit_mode.fit"
+
+  [[setting.options]]
+  value = "stretch"
+  label_key = "settings.fit_mode.stretch"
+
+[[setting]]
+key = "render_quality"
+type = "select"
+label_key = "settings.render_quality.label"
+description_key = "settings.render_quality.description"
+default = "default"
+
+  [[setting.options]]
+  value = "default"
+  label_key = "settings.render_quality.default"
+
+  [[setting.options]]
+  value = "high"
+  label_key = "settings.render_quality.high"
+
+[[setting]]
+key = "glsl_shader"
+type = "file"
+label_key = "settings.glsl_shader.label"
+description_key = "settings.glsl_shader.description"
+default = ""
+
+[[setting]]
+key = "hardware_decode"
+type = "bool"
+label_key = "settings.hardware_decode.label"
+description_key = "settings.hardware_decode.description"
+default = true
+
+[[setting]]
+key = "auto_pause"
+type = "bool"
+label_key = "settings.auto_pause.label"
+description_key = "settings.auto_pause.description"
+default = true
+
+[[setting]]
+key = "mpv_options"
+type = "string"
+label_key = "settings.mpv_options.label"
+description_key = "settings.mpv_options.description"
+default = ""
+
+[[setting]]
+key = "extract_last_frame"
+type = "bool"
+label_key = "settings.extract_last_frame.label"
+description_key = "settings.extract_last_frame.description"
+default = true
+
+[[setting]]
+key = "keep_host_wallpaper"
+type = "bool"
+label_key = "settings.keep_host_wallpaper.label"
+description_key = "settings.keep_host_wallpaper.description"
+default = true
+
+# ── Resource limits ───────────────────────────────────────────────────────────
+
+[[setting]]
+key = "run_as_systemd"
+type = "bool"
+label_key = "settings.run_as_systemd.label"
+description_key = "settings.run_as_systemd.description"
+default = false
+
+[[setting]]
+key = "cpu_quota"
+type = "int"
+label_key = "settings.cpu_quota.label"
+default = 0
+min = 0
+max = 1600
+step = 10
+visible_when = { key = "run_as_systemd", values = ["true"] }
+
+[[setting]]
+key = "allowed_cpus"
+type = "string"
+label_key = "settings.allowed_cpus.label"
+default = ""
+visible_when = { key = "run_as_systemd", values = ["true"] }
+
+[[setting]]
+key = "memory_max"
+type = "string"
+label_key = "settings.memory_max.label"
+default = ""
+visible_when = { key = "run_as_systemd", values = ["true"] }
+
+[[setting]]
+key = "cpu_weight"
+type = "int"
+label_key = "settings.cpu_weight.label"
+default = 0
+min = 0
+max = 10000
+step = 10
+visible_when = { key = "run_as_systemd", values = ["true"] }
+
+[[setting]]
+key = "nice"
+type = "int"
+label_key = "settings.nice.label"
+default = 0
+min = -20
+max = 19
+step = 1
+visible_when = { key = "run_as_systemd", values = ["true"] }
+
+# Headless background service: owns the routing, assignments and mpvpaper lifecycle.
+[[service]]
+id = "service"
+entry = "mediapaper_service.luau"
+
+# Per-output media picker.
+[[panel]]
+id = "picker"
+entry = "panel.luau"
+width = 920
+height = 820
+placement = "attached"
+position = "auto"
+
+# Bar tile that opens the picker.
+[[widget]]
+id = "mediapaper"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  default = "photo-video"
