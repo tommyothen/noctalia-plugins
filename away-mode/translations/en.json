@@ -1,0 +1,59 @@
+{
+  "error": {
+    "command_failed": "The systemd command failed.",
+    "missing_dependencies": "systemctl, systemd-run, systemd-inhibit and sleep are required.",
+    "state_mismatch": "The inhibitor did not end up in the requested state."
+  },
+  "notification": {
+    "auto_off": {
+      "body": "You are back, so suspend and lid-close work normally again.",
+      "title": "Away mode off"
+    },
+    "off": {
+      "body": "Suspend and lid-close work normally again.",
+      "title": "Away mode off"
+    },
+    "on": {
+      "body": "Nothing will suspend this machine until you turn it off. Locking and screen-off still work.",
+      "title": "Away mode on"
+    }
+  },
+  "settings": {
+    "auto_off_on_unlock": {
+      "description": "Turn away mode off by itself once you unlock the session, so normal suspend comes back without a second click",
+      "label": "Turn Off When You Return"
+    },
+    "lock_on_enable": {
+      "description": "Lock the session as soon as away mode is turned on",
+      "label": "Lock On Enable"
+    },
+    "mute_on_enable": {
+      "description": "Mute the speakers as soon as away mode is turned on; turning it off unmutes them again, unless they were already muted when you left",
+      "label": "Mute On Enable"
+    },
+    "screen_off_on_enable": {
+      "description": "Turn the screens off as soon as away mode is turned on; they wake normally on input or lid-open, and go dark again on the usual idle timer",
+      "label": "Screens Off On Enable"
+    }
+  },
+  "shortcut": {
+    "off": "Away Mode",
+    "on": "Away Mode"
+  },
+  "state": {
+    "on": "On"
+  },
+  "title": "Away Mode",
+  "tooltip": {
+    "allowed": "allowed",
+    "blocked": "blocked",
+    "changing": "Switching away mode…",
+    "lid": "Lid close",
+    "lock": "Lock",
+    "off": "Away mode off — click before you step away",
+    "screen_off": "Screen off",
+    "since": "Since",
+    "suspend": "Suspend",
+    "unavailable": "Away mode needs systemd"
+  }
+}

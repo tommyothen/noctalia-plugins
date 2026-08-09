@@ -1,0 +1,93 @@
+# Away Mode. One toggle for stepping away without losing the machine.
+#
+# The problem it solves is narrow: a laptop left alone will suspend, either
+# because the lid gets closed or because the idle timer runs out — and a
+# suspended machine stops the agents, builds and downloads that were the whole
+# reason for walking away. Caffeine is the wrong tool: it inhibits `idle`, so it
+# also cancels the lock and the screen-off that make leaving a machine alone
+# safe. Away Mode inhibits only `sleep` and `handle-lid-switch`, so the session
+# still locks on schedule and the screens still go dark on schedule — nothing
+# suspends.
+#
+# The `on` state does not live in this plugin. It lives in a transient systemd
+# unit that holds a logind block inhibitor for as long as it runs, which means
+# the state survives a shell reload, a plugin reload and a crash, and is always
+# recoverable with `systemctl --user is-active`. The [[service]] is a thin state
+# machine over that unit; the [[widget]] and [[shortcut]] are pure subscribers
+# that ask for a toggle through a shared state channel and render what comes
+# back. Nothing here reads or writes the host's own idle settings.
+#
+# Borrows the transient-unit mechanic from 8bury/lid-guard (MIT), widened from
+# `handle-lid-switch` to `sleep:handle-lid-switch` and paired with an explicit
+# lock + screen-off on enable and an auto-off when the session is unlocked.
+
+id = "tommyothen/away-mode"
+name = "Away Mode"
+version = "0.1.0"
+plugin_api = 23
+author = "tommyothen"
+license = "MIT"
+icon = "door-exit"
+dependencies = ["systemd-run", "systemctl", "systemd-inhibit", "sleep"]
+tags = ["bar", "indicator", "session", "power", "service", "shortcut", "system", "utility"]
+description = "Step away without the machine suspending: blocks sleep and lid-close while leaving lock and screen-off alone."
+
+# ── Leaving ───────────────────────────────────────────────────────────────────
+
+# These are what you would otherwise do by hand on the way out, and all are safe
+# to leave on: the inhibitor is already in place by the time they run, so
+# locking and blanking cannot cascade into a suspend.
+
+[[setting]]
+key = "lock_on_enable"
+type = "bool"
+label_key = "settings.lock_on_enable.label"
+description_key = "settings.lock_on_enable.description"
+default = true
+
+[[setting]]
+key = "screen_off_on_enable"
+type = "bool"
+label_key = "settings.screen_off_on_enable.label"
+description_key = "settings.screen_off_on_enable.description"
+default = true
+
+# Mute remembers the state it found: a sink that was already muted when the mode
+# went on stays muted when it goes off, and only a mute this plugin created is
+# undone. Needs `wpctl`; without it the step is skipped.
+
+[[setting]]
+key = "mute_on_enable"
+type = "bool"
+label_key = "settings.mute_on_enable.label"
+description_key = "settings.mute_on_enable.description"
+default = true
+
+# ── Coming back ───────────────────────────────────────────────────────────────
+
+# Unlocking is the one unambiguous signal that you are back at the machine, so it
+# is the natural place to hand normal suspend behaviour back. Turn this off to
+# keep the inhibitor up across a login — useful when you unlock only to glance at
+# progress before leaving again.
+
+[[setting]]
+key = "auto_off_on_unlock"
+type = "bool"
+label_key = "settings.auto_off_on_unlock.label"
+description_key = "settings.auto_off_on_unlock.description"
+default = true
+
+# Owns the transient unit and every command this plugin runs.
+[[service]]
+id = "svc"
+entry = "service.luau"
+
+# Bar presence: one glyph, coloured by state.
+[[widget]]
+id = "toggle"
+entry = "widget.luau"
+
+# The same toggle as a control-center tile.
+[[shortcut]]
+id = "away-toggle"
+entry = "shortcut.luau"
