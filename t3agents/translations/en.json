@@ -1,0 +1,92 @@
+{
+  "title": "T3 Agents",
+  "error": {
+    "query_failed": "Could not read the t3 database — the projections may have moved.",
+    "schema_drift": "t3 schema is at migration {level}; these queries were written against {known}."
+  },
+  "status": {
+    "error": "error",
+    "idle": "idle",
+    "interrupted": "interrupted",
+    "ready": "ready",
+    "running": "running",
+    "starting": "starting",
+    "stopped": "stopped"
+  },
+  "time": {
+    "days": "{n}d ago",
+    "hours": "{n}h ago",
+    "in_days": "{d}d {h}h",
+    "in_hours": "{h}h {m}m",
+    "in_minutes": "{m}m",
+    "minutes": "{n}m ago",
+    "now": "just now"
+  },
+  "limits": {
+    "claude": "Claude",
+    "codex": "Codex",
+    "credits": "credits {amount}",
+    "credits_unlimited": "unlimited",
+    "provider_plan": "{name} {plan}",
+    "reset_due": "any moment",
+    "resets_in": "resets in {time}",
+    "stale": "stale · last read {age}",
+    "weekly_short": "wk",
+    "window_five_hour": "5h",
+    "window_hours": "{n}h",
+    "window_weekly": "weekly"
+  },
+  "panel": {
+    "agents": "Active agents",
+    "limits": "Usage limits",
+    "no_agents": "Nothing running right now",
+    "no_threads": "No open threads",
+    "remote_last_seen": "last seen {age}",
+    "standalone": "Standalone sessions",
+    "t3_down": "t3-code is not running",
+    "threads": "Threads",
+    "untitled_agent": "Unnamed agent",
+    "untitled_project": "Unknown project",
+    "untitled_session": "Claude Code",
+    "untitled_thread": "Untitled thread",
+    "waiting": "{n} waiting on you"
+  },
+  "widget": {
+    "attention": "Waiting on you",
+    "idle": "No agents running",
+    "panel_failed": "Could not open the dashboard",
+    "t3_down": "t3-code is not running",
+    "untitled": "Untitled thread",
+    "untitled_agent": "Unnamed agent"
+  },
+  "settings": {
+    "glyph": {
+      "description": "Bar icon for the widget",
+      "label": "Icon"
+    },
+    "limits_gap_s": {
+      "description": "Least time between two limit checks for a provider; the checks themselves happen when work finishes",
+      "label": "Limit Check Gap"
+    },
+    "poll_interval_ms": {
+      "description": "How often to re-read live threads and subagents from the t3 database",
+      "label": "Live Refresh"
+    },
+    "remote_names": {
+      "description": "Map each t3-connect environment id to a display name (e.g. \"<environmentId>\" = \"My Server\"); an unmapped one shows a shortened id",
+      "label": "Remote Names"
+    },
+    "remote_poll_s": {
+      "description": "How often to read the t3-code thread cache for threads on other connected machines",
+      "label": "Remote Refresh"
+    },
+    "show_limits": {
+      "description": "Show how much of each Claude and Codex subscription window is spent, at the top of the dashboard",
+      "label": "Subscription Limits"
+    },
+    "show_remote": {
+      "description": "Show threads from other machines connected over t3-connect in the Threads list",
+      "label": "Remote Threads"
+    }
+  }
+}

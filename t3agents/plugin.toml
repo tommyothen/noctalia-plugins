@@ -1,0 +1,151 @@
+# T3 Agents. What every AI agent on this machine is doing, and how much plan is
+# left to do it with.
+#
+# A headless [[service]] is the only thing that touches disk: it polls the t3-code
+# projection database (read-only, over a URI with mode=ro so the WAL is never
+# disturbed) on a fast loop for live threads and their running subagents, and every
+# 30 s scans ~/.claude/sessions for Claude Code sessions started by hand. Both
+# results land in noctalia.state; the bar [[widget]] and the [[panel]] are pure
+# subscribers that never read a file of their own.
+#
+# All five SQLite queries the fast loop wants come back from one sqlite3 call as a
+# single JSON document, because five process spawns a second is a cost with no
+# payoff.
+#
+# API level 23 is the highest this host accepts (5.0.0_beta.8 supports 3-23), so
+# every subprocess goes through the string form of runAsync. Nothing user-supplied
+# is interpolated into a command line, and the two constants that are get run
+# through shellQuote anyway.
+#
+# Two further loops ask each provider how much of its subscription window is gone:
+# Claude over its usage endpoint, Codex over the local app-server. They have no
+# cadence of their own — the fast loop triggers them when it sees work finish, no
+# more often than limits_gap_s — so an idle machine makes no calls at all. Both
+# credentials are read from the user's own files at the moment of the call and
+# never stored, embedded or logged; the Claude token reaches curl down a pipe so it
+# stays out of argv. Nothing is ever written back to either CLI's directory.
+#
+# t3-connect threads from other machines round out the picture. t3-code caches
+# each connected environment's thread state as plaintext JSON in its Electron
+# IndexedDB, so a remote loop copies that store (the app holds a lock, so the copy
+# is what gets read) and a shipped remote_threads.py carves out the environments
+# that are not this one. Those threads join the panel's Threads list under a
+# per-environment subheader. It is thread-level data only — no subagent detail is
+# cached for remote — so remote threads never reach the Active agents section.
+#
+# Everything degrades rather than fails. No ~/.t3/userdata/server-runtime.json means
+# t3 is not running, so the thread sections say so and the session scan carries on;
+# a SQL error becomes a banner in the panel instead of a dead plugin. Neither
+# provider CLI is required: the one that is missing loses its row, and a provider
+# that cannot be reached keeps its last answer, dimmed. A missing IndexedDB cache
+# means no remote threads and no error.
+
+id = "tommyothen/t3agents"
+name = "T3 Agents"
+version = "0.2.0"
+plugin_api = 23
+author = "tommyothen"
+license = "MIT"
+icon = "robot"
+dependencies = ["sqlite3", "jq", "curl", "python3"]
+tags = ["ai", "agents", "limits", "bar", "panel"]
+description = "Live t3-code threads and subagents, and how much of each subscription window is left, in the bar."
+
+# ── Polling ───────────────────────────────────────────────────────────────────
+
+# The fast loop: one sqlite3 call per tick (~3 ms here), so this can be genuinely
+# live without showing up in a CPU graph.
+[[setting]]
+key = "poll_interval_ms"
+type = "int"
+label_key = "settings.poll_interval_ms.label"
+description_key = "settings.poll_interval_ms.description"
+default = 1500
+min = 500
+max = 5000
+step = 250
+
+# ── Subscription limits ───────────────────────────────────────────────────────
+
+# Off means no network call is made at all.
+[[setting]]
+key = "show_limits"
+type = "bool"
+label_key = "settings.show_limits.label"
+description_key = "settings.show_limits.description"
+default = true
+
+# The limit checks are event-driven: work finishing is what moves a subscription
+# window, so the fast loop asks for a refresh when a thread stops running or a
+# subagent goes away. This is the floor between two of those asks, per provider.
+# It matters most for Claude, whose endpoint is rate-limited against the same
+# token the CLI uses, so every call this plugin makes is one the CLI cannot.
+[[setting]]
+key = "limits_gap_s"
+type = "int"
+label_key = "settings.limits_gap_s.label"
+description_key = "settings.limits_gap_s.description"
+default = 300
+min = 60
+max = 3600
+step = 60
+
+# ── Remote threads ────────────────────────────────────────────────────────────
+
+# Off means the IndexedDB cache is never copied or read.
+[[setting]]
+key = "show_remote"
+type = "bool"
+label_key = "settings.show_remote.label"
+description_key = "settings.show_remote.description"
+default = true
+
+# The friendly name of an environment is encrypted elsewhere and not in the cache
+# this reads, so it cannot be discovered — map each environment id to a name here.
+# An id with no entry shows the first eight characters of the id instead, so the
+# feature still works with this left empty. Example: "<environmentId>" = "My Server".
+[[setting]]
+key = "remote_names"
+type = "string_map"
+label_key = "settings.remote_names.label"
+description_key = "settings.remote_names.description"
+default = {}
+
+# The remote read is a directory copy plus a parse of a local file, so it is cheap
+# but not free. This is how often it runs.
+[[setting]]
+key = "remote_poll_s"
+type = "int"
+label_key = "settings.remote_poll_s.label"
+description_key = "settings.remote_poll_s.description"
+default = 20
+min = 10
+max = 300
+step = 5
+
+# Headless collector: owns every disk read and publishes four state keys.
+[[service]]
+id = "svc"
+entry = "service.luau"
+
+# Bar presence: a glyph, a running-agent count, and a tooltip of the fleet.
+[[widget]]
+id = "agents"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  description_key = "settings.glyph.description"
+  default = "robot"
+
+# The dashboard: subscription windows, threads, subagents.
+[[panel]]
+id = "dashboard"
+entry = "panel.luau"
+width = 480
+height = 560
+placement = "attached"
+position = "auto"
+dismiss_on_outside_click = true
