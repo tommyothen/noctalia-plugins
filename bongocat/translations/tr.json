@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "audio_spectrum": {
+      "label": "Sese tepki ver"
+    },
+    "auto_detect": {
+      "label": "Find Keyboards Automatically",
+      "description": "Reads every keyboard listed in /proc/bus/input/devices, including the virtual one a remapper like keyd creates, and rescans every 5 seconds. Turn off to use only the devices listed below."
+    },
+    "executable_path": {
+      "label": "Alternatif evtest çalıştırılabilir dosyası"
+    },
+    "input_devices": {
+      "description": "/dev/input/by-id/*-event-* veya /dev/input/by-path/*-event-* terchih et; /dev/input/eventN kernel veya cihaz güncellemelerinden sonra değişebilir",
+      "label": "Giriş Cihazları"
+    },
+    "rave_mode": {
+      "label": "Ritime göre renkleri coştur"
+    },
+    "show_wpm": {
+      "description": "Shows your typing speed next to the cat while you type, and hides it again 5 seconds after you stop. Counts characters only, so modifiers and arrow keys do not add to it.",
+      "label": "Show Typing Speed"
+    },
+    "tappy_mode": {
+      "label": "Ritme göre dokun"
+    },
+    "use_mpris_filter": {
+      "label": "Sadece medya oynarken tepki ver"
+    }
+  },
+  "wpm": {
+    "tooltip": "{n} WPM"
+  }
+}
