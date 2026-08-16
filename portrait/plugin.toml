@@ -1,0 +1,58 @@
+# Portrait. One toggle to turn a monitor sideways for vertical content.
+#
+# niri can rotate an output at runtime with `niri msg output <name> transform
+# <t>`, but nobody remembers the connector name or which of the eight transform
+# values they want while a video is waiting. This wraps exactly one decision,
+# rotated or not, behind a bar glyph, a control-center tile and an IPC verb a
+# keybind can call.
+#
+# The [[service]] owns every command and polls niri for the real transform, so
+# a rotation done from a terminal shows up in the bar within a few seconds. The
+# [[widget]] and [[shortcut]] are pure subscribers over a shared state channel,
+# same shape as tommyothen/away-mode.
+
+id = "tommyothen/portrait"
+name = "Portrait"
+version = "0.1.0"
+plugin_api = 23
+author = "tommyothen"
+license = "MIT"
+icon = "rotate-clockwise"
+dependencies = ["niri"]
+tags = ["bar", "indicator", "display", "monitor", "service", "shortcut", "utility"]
+description = "Rotate a monitor between landscape and portrait with one click, for watching vertical content."
+
+# niri specifies transforms counter-clockwise: the default 270 reads upright
+# once you turn the physical monitor counter-clockwise (top edge to the left),
+# 90 is for turning it clockwise. Pick the value that matches your monitor.
+[[setting]]
+key = "rotation"
+type = "string"
+label_key = "settings.rotation.label"
+description_key = "settings.rotation.description"
+default = "270"
+
+# Empty means "the focused output when you click", which is the right answer on
+# a laptop. Pin a connector name (`niri msg outputs`) on a multi-monitor desk so
+# the toggle always turns the same screen.
+[[setting]]
+key = "output"
+type = "string"
+label_key = "settings.output.label"
+description_key = "settings.output.description"
+default = ""
+
+# Owns the niri commands and the polled transform state.
+[[service]]
+id = "svc"
+entry = "service.luau"
+
+# Bar presence: one glyph, coloured by state.
+[[widget]]
+id = "toggle"
+entry = "widget.luau"
+
+# The same toggle as a control-center tile.
+[[shortcut]]
+id = "portrait-toggle"
+entry = "shortcut.luau"

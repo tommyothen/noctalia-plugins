@@ -1,0 +1,29 @@
+{
+  "error": {
+    "command_failed": "The niri command failed.",
+    "missing_dependencies": "The niri CLI is required.",
+    "no_output": "No output to rotate: none focused and none pinned in settings."
+  },
+  "settings": {
+    "output": {
+      "description": "Connector name of the monitor to rotate (see `niri msg outputs`). Leave empty to rotate whichever output is focused when you click",
+      "label": "Output"
+    },
+    "rotation": {
+      "description": "Degrees counter-clockwise for the rotated state: 90, 180 or 270. The default 270 reads upright once you turn the monitor counter-clockwise; 90 is for turning it clockwise",
+      "label": "Rotation"
+    }
+  },
+  "shortcut": {
+    "off": "Portrait",
+    "on": "Portrait"
+  },
+  "title": "Portrait",
+  "tooltip": {
+    "changing": "Rotating…",
+    "off": "Landscape. Click to turn the monitor for vertical content",
+    "output": "Output",
+    "rotation": "Rotation",
+    "unavailable": "Portrait needs the niri CLI"
+  }
+}
