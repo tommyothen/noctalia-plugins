@@ -25,18 +25,12 @@ local SMALL_BAR_HEIGHT = 4
 -- roughly this point a long turn is one tool result away from a compaction.
 local CONTEXT_ALARM = 0.9
 
--- Where a subscription window stops being background information. Both providers
--- ship a severity of their own, but only Claude's is documented, and only its
--- "normal" value is one this plugin has actually seen — so severity narrows the
--- verdict when it is recognised and the percentage decides otherwise.
+-- Where a subscription window stops being background information. Providers can
+-- supply a severity; the percentage thresholds cover unknown values.
 local LIMIT_WARN_PCT = 70
 local LIMIT_ALARM_PCT = 90
-local SEVERITY_ELEVATED = { warning = true, elevated = true, high = true }
-local SEVERITY_CRITICAL = { critical = true, exceeded = true, exhausted = true, blocked = true }
-
--- windowDurationMins, as Codex reports it.
-local WEEKLY_MINS = 10080
-local FIVE_HOUR_MINS = 300
+local SEVERITY_ELEVATED = { warning = true, elevated = true, mid = true }
+local SEVERITY_CRITICAL = { critical = true, exceeded = true, exhausted = true, blocked = true, high = true }
 
 -- Remote threads come off a cache that only moves while the t3-code app runs. Past
 -- this age since an environment's newest thread was touched, its subheader carries
@@ -96,14 +90,6 @@ end
 
 local function percent(value)
   return string.format("%d%%", math.floor((tonumber(value) or 0) + 0.5))
-end
-
--- Codex sends the credit balance as a string with ten decimal places, which is
--- more precision than it is money.
-local function balance(value)
-  local amount = tonumber(value)
-  if amount == nil then return "" end
-  return string.format("%.2f", amount)
 end
 
 local function limitColor(pct, severity, stale)
@@ -179,15 +165,17 @@ local function remoteThreadCount(rem)
   return count
 end
 
-local function limitEntry(row)
-  if type(row) ~= "table" or row.available ~= true then return nil end
-  return row
-end
-
 local function limits()
   local data = noctalia.state.get("limits")
-  if type(data) ~= "table" then return { claude = nil, codex = nil } end
-  return { claude = limitEntry(data.claude), codex = limitEntry(data.codex) }
+  if type(data) ~= "table" or data.available ~= true then
+    return { available = false, stale = false, at = 0, providers = {} }
+  end
+  return {
+    available = true,
+    stale = data.stale == true,
+    at = tonumber(data.at) or 0,
+    providers = type(data.providers) == "table" and data.providers or {},
+  }
 end
 
 local function limitPart(window)
@@ -229,27 +217,24 @@ local function fingerprint(snap, sess, lim, rem)
       }, "\2"))
     end
   end
-  if lim.claude ~= nil then
-    local scoped = {}
-    if type(lim.claude.scoped) == "table" then
-      for _, window in ipairs(lim.claude.scoped) do
-        table.insert(scoped, tostring(window.label or "") .. "\4" .. limitPart(window))
+  for _, provider in ipairs(lim.providers) do
+    local providerParts = {
+      tostring(provider.id), tostring(provider.name), tostring(provider.plan),
+    }
+    if type(provider.windows) == "table" then
+      for _, window in ipairs(provider.windows) do
+        table.insert(providerParts, tostring(window.label or "") .. "\4" .. limitPart(window))
       end
     end
-    table.insert(parts, table.concat({
-      limitPart(lim.claude.fiveHour), limitPart(lim.claude.weekly), table.concat(scoped, "\5"),
-      tostring(lim.claude.planType or ""),
-      tostring(lim.claude.stale), tostring(lim.claude.at),
-    }, "\2"))
+    if type(provider.blocks) == "table" then
+      for _, block in ipairs(provider.blocks) do
+        local first = type(block.lines) == "table" and block.lines[1] or ""
+        table.insert(providerParts, tostring(block.label or "") .. "\4" .. tostring(first or ""))
+      end
+    end
+    table.insert(parts, table.concat(providerParts, "\5"))
   end
-  if lim.codex ~= nil then
-    table.insert(parts, table.concat({
-      limitPart(lim.codex.primary), limitPart(lim.codex.secondary),
-      tostring(lim.codex.credits and lim.codex.credits.balance or ""),
-      tostring(lim.codex.planType or ""),
-      tostring(lim.codex.stale), tostring(lim.codex.at),
-    }, "\2"))
-  end
+  table.insert(parts, table.concat({ tostring(lim.stale), tostring(lim.at) }, "\2"))
   return table.concat(parts, "\1")
 end
 
@@ -418,9 +403,9 @@ local function smallLimitRow(label, window, stale)
   local pct = tonumber(window.pct) or 0
   local color = limitColor(pct, window.severity, stale)
   return ui.row({ gap = 6, align = "center" }, {
-    -- Fixed-width wrapper so every small bar starts at the same x regardless of
-    -- label length ("wk" vs "Fable"); width is a container prop, not a label one.
-    ui.row({ width = 38, align = "center" }, {
+    -- Fixed-width wrapper so every small bar starts at the same x. Width is a
+    -- container prop, not a label one.
+    ui.row({ width = 64, align = "center" }, {
       ui.label({ text = label, fontSize = 10, color = "on_surface_variant", maxLines = 1 }),
     }),
     limitBar(pct, color, SMALL_BAR_HEIGHT),
@@ -428,15 +413,12 @@ local function smallLimitRow(label, window, stale)
   })
 end
 
--- "Claude Max", "Codex Plus". The plan is the useful half of what used to be a
--- badge in the header, and it belongs next to the numbers it governs.
 local function providerTitle(name, plan)
   if type(plan) ~= "string" or plan == "" then return name end
   return tr("limits.provider_plan", { name = name, plan = plan:sub(1, 1):upper() .. plan:sub(2) })
 end
 
--- One provider: the window that runs out first as a bar, then whatever else that
--- provider has to say — Claude's weekly ceilings, Codex's credit balance.
+-- One provider: the first window as a bar, then its remaining windows and blocks.
 local function limitCard(key, name, window, sublabel, extras, stale, at, now)
   local pct = tonumber(window.pct) or 0
   local color = limitColor(pct, window.severity, stale)
@@ -473,60 +455,32 @@ local function limitCard(key, name, window, sublabel, extras, stale, at, now)
   return ui.column({ key = key, gap = 4, align = "stretch" }, rows)
 end
 
-local function claudeLimitCard(claude, now)
-  local five = type(claude.fiveHour) == "table" and claude.fiveHour or nil
-  if five == nil then return nil end
-  local stale = claude.stale == true
-
+local function providerCard(provider, now, stale, at)
+  local primary = type(provider.windows) == "table" and provider.windows[1] or nil
+  if type(primary) ~= "table" then return nil end
   local extras = {}
-  local weekly = type(claude.weekly) == "table" and claude.weekly or nil
-  if weekly ~= nil then
-    table.insert(extras, smallLimitRow(tr("limits.weekly_short"), weekly, stale))
+  for i = 2, #provider.windows do
+    local window = provider.windows[i]
+    if type(window) == "table" then
+      table.insert(extras, smallLimitRow(text(window.label, ""), window, stale))
+    end
   end
-  -- The per-model weekly ceilings, named by the server rather than by this
-  -- plugin: which models have one of their own is Anthropic's to change.
-  if type(claude.scoped) == "table" then
-    for _, window in ipairs(claude.scoped) do
-      if type(window) == "table" and type(window.label) == "string" and window.label ~= "" then
-        table.insert(extras, smallLimitRow(window.label, window, stale))
+  if type(provider.blocks) == "table" then
+    for _, block in ipairs(provider.blocks) do
+      local first = type(block.lines) == "table" and block.lines[1] or nil
+      if type(first) == "string" and first ~= "" then
+        first = first:gsub("(%d+%.%d%d)%d+", "%1")
+        local label = type(block.label) == "string" and block.label or ""
+        table.insert(extras, ui.row({ gap = 6, align = "center" }, {
+          ui.glyph({ name = label == "Credits" and "coin" or "info-circle", size = 11, color = "on_surface_variant" }),
+          ui.label({ text = label .. ": " .. first, fontSize = 10, color = "on_surface_variant", flexGrow = 1 }),
+        }))
       end
     end
   end
 
-  return limitCard("limit-claude", providerTitle(tr("limits.claude"), claude.planType), five,
-    tr("limits.window_five_hour"), extras, stale, claude.at, now)
-end
-
-local function codexWindowLabel(window)
-  local mins = tonumber(window.windowMins) or 0
-  if mins == WEEKLY_MINS then return tr("limits.window_weekly") end
-  if mins == FIVE_HOUR_MINS then return tr("limits.window_five_hour") end
-  if mins >= 60 then return tr("limits.window_hours", { n = math.floor(mins / 60) }) end
-  return ""
-end
-
-local function codexLimitCard(codex, now)
-  local primary = type(codex.primary) == "table" and codex.primary or nil
-  if primary == nil then return nil end
-  local stale = codex.stale == true
-
-  local extras = {}
-  local secondary = type(codex.secondary) == "table" and codex.secondary or nil
-  if secondary ~= nil then
-    table.insert(extras, smallLimitRow(codexWindowLabel(secondary), secondary, stale))
-  end
-  if type(codex.credits) == "table" then
-    local amount = codex.credits.unlimited and tr("limits.credits_unlimited") or balance(codex.credits.balance)
-    if amount ~= "" then
-      table.insert(extras, ui.row({ gap = 6, align = "center" }, {
-        ui.glyph({ name = "coin", size = 11, color = "on_surface_variant" }),
-        ui.label({ text = tr("limits.credits", { amount = amount }), fontSize = 10, color = "on_surface_variant", flexGrow = 1 }),
-      }))
-    end
-  end
-
-  return limitCard("limit-codex", providerTitle(tr("limits.codex"), codex.planType), primary,
-    codexWindowLabel(primary), extras, stale, codex.at, now)
+  return limitCard("limit-" .. tostring(provider.id), providerTitle(text(provider.name, tostring(provider.id)), provider.plan),
+    primary, text(primary.label, ""), extras, stale, at, now)
 end
 
 local function sessionRow(session, now)
@@ -564,12 +518,12 @@ local function render()
 
   -- Subscription windows go first: they are the one thing on this panel that
   -- decides whether the work below it can happen at all. A provider that is not
-  -- installed contributes nothing, and two of those means no section.
+  -- available contributes nothing, and no cards means no section.
   local limitCards = {}
-  local claudeCard = lim.claude ~= nil and claudeLimitCard(lim.claude, now) or nil
-  if claudeCard ~= nil then table.insert(limitCards, claudeCard) end
-  local codexCard = lim.codex ~= nil and codexLimitCard(lim.codex, now) or nil
-  if codexCard ~= nil then table.insert(limitCards, codexCard) end
+  for _, provider in ipairs(lim.providers) do
+    local card = providerCard(provider, now, lim.stale, lim.at)
+    if card ~= nil then table.insert(limitCards, card) end
+  end
   if #limitCards > 0 then
     table.insert(body, sectionHeader("gauge", tr("panel.limits"), ""))
     for _, card in ipairs(limitCards) do

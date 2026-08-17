@@ -30,8 +30,8 @@ tags = ["bar", "indicator", "session", "power", "service", "shortcut", "system",
 [[plugin]]
 id = "tommyothen/t3agents"
 name = "T3 Agents"
-version = "0.2.0"
-updated_at = 1786629153
+version = "0.3.0"
+updated_at = 1786996986
 added_at = 1786465886
 author = "tommyothen"
 license = "MIT"

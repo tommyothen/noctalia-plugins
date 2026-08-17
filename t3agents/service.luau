@@ -1,17 +1,16 @@
 --!nonstrict
 -- T3 Agents — headless collector.
 --
--- The only entry that touches disk. Five loops share one update() tick:
+-- The only entry that touches disk. Four loops share one update() tick:
 --
 --   fast (poll_interval_ms)  gate file + one sqlite3 call -> state "snapshot"
 --   sessions (30 s)          one /bin/sh scan of ~/.claude/sessions -> state "sessions"
 --   remote (remote_poll_s)   copy of the t3-code IndexedDB cache -> state "remote"
---   claude (on demand)       subscription usage endpoint  -> state "limits"
---   codex (on demand)        codex app-server JSON-RPC    -> state "limits"
+--   limits (on demand)       one ai-usagebar read          -> state "limits"
 --
--- The two limit loops have no cadence of their own. What moves a subscription
+-- The limit loop has no cadence of its own. What moves a subscription
 -- window is work finishing, so the fast loop's own diff is the trigger: a thread
--- that stopped running or a subagent that is gone asks both providers again, no
+-- that stopped running or a subagent that is gone asks every provider again, no
 -- more often than limits_gap_s. An idle machine makes no calls at all.
 --
 -- The fast loop reads t3-code's projection database over a `mode=ro` URI, so it
@@ -37,19 +36,14 @@
 -- and the Threads section, never the Active agents one. Nothing under the cache
 -- but the plaintext snapshot is read, and the scratch copy is always removed.
 --
--- The two limit loops are the only thing here that touches the network, and they
--- are the only thing that touches a credential. Neither one ever holds a secret
--- anywhere it could leak: the Claude access token is read out of the user's own
--- credentials file inside the child shell and handed to curl down a pipe as a
--- config fragment, so it never appears in argv, in the environment, in state, or
--- in a log line. Nothing is cached to disk and nothing is ever written back —
--- refreshing the token is the CLI's job, and racing it on that file logs the user
--- out.
+-- The limit loop delegates provider access to ai-usagebar. That CLI owns every
+-- credential and its 60-second on-disk response cache; this plugin receives only
+-- display-ready usage data and never reads or stores a token.
 --
 -- Nothing here is fatal. A missing gate file publishes t3Running = false and the
 -- session scan carries on; a SQL failure becomes an errorBanner the panel renders;
 -- a provider that cannot be reached keeps its last answer with a stale flag, and
--- one that is not installed at all simply never becomes available.
+-- a missing ai-usagebar binary leaves the limits section hidden.
 
 -- ==============================================================================
 -- ── CONSTANTS ──────────────────────────────────────────────────────────────
@@ -98,12 +92,7 @@ local FAST_FORCE_S = 30
 local FAST_TIMEOUT_MS = 5000
 local SESSIONS_TIMEOUT_MS = 15000
 local REMOTE_TIMEOUT_MS = 15000
-local CLAUDE_TIMEOUT_MS = 20000
-local CODEX_TIMEOUT_MS = 25000
-
--- The usage endpoint answers a generic User-Agent with 429. The real version is
--- resolved once from the CLI; this is only the floor to fall back to.
-local CLAUDE_VERSION_FALLBACK = "2.1.229"
+local AIUB_TIMEOUT_MS = 30000
 
 -- ==============================================================================
 -- ── HELPERS ────────────────────────────────────────────────────────────────
@@ -273,155 +262,51 @@ OUT=$(python3 "$PY" "$D" "$LOCAL" 2>/dev/null)
 printf '%s\n' "$OUT"
 ]==]
 
--- Claude's subscription windows, from the endpoint the CLI itself asks. $CCV is
--- prepended by claudeCommand(); nothing else crosses in.
---
--- The token never reaches a command line. curl reads `-K -`, so the Authorization
--- header arrives on stdin as a config fragment and the only place the secret
--- exists is this shell's memory and that pipe — not argv, where any process on
--- the machine could read it out of /proc.
---
--- Expiry is checked before the socket is opened, and a dead token means "skip"
--- rather than "refresh": the credentials file belongs to the CLI, and writing a
--- rotated token underneath a running one signs the user out.
-local CLAUDE_SCRIPT = [==[
-CREDS="$HOME/.claude/.credentials.json"
-if [ ! -r "$CREDS" ]; then
-  printf '{"available":false}\n'
-  exit 0
-fi
+-- ai-usagebar owns provider discovery, credentials and response caching. Its
+-- display model is reduced here so only fields the panel draws cross into state.
+local AIUB_SCRIPT = [==[
+command -v ai-usagebar >/dev/null 2>&1 || { printf '{"available":false}\n'; exit 0; }
 
-EXP=$(jq -r '.claudeAiOauth.expiresAt // 0' "$CREDS" 2>/dev/null)
-case "$EXP" in ''|*[!0-9]*) EXP=0 ;; esac
-if [ "$EXP" -le "$(( $(date +%s) * 1000 ))" ]; then
-  printf '{"available":true,"ok":false}\n'
-  exit 0
-fi
-
-TOK=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS" 2>/dev/null)
-if [ -z "$TOK" ]; then
-  printf '{"available":false}\n'
-  exit 0
-fi
-
-# The plan name is the one thing worth taking from the credentials file besides
-# the token: it names the row in the panel, and nothing else on disk says it.
-PLAN=$(jq -r '.claudeAiOauth.subscriptionType // empty' "$CREDS" 2>/dev/null)
-
-# The payload carries a dozen internal buckets, most of them null on any given
-# account. Only the two windows that mean something to a subscriber are kept,
-# each paired with the severity the server assigned it in limits[].
-#
-# limits[] also carries a weekly_scoped entry per model the account has a ceiling
-# of its own for (Fable today, whatever ships next later). Which models those are
-# is the server's to change, so they come back as a self-naming list rather than
-# as fixed fields, and an entry with no display name is dropped.
-CLAUDE_FILTER='
+AIUB_FILTER='
 def epoch:
   if type == "string" and . != "" then
     ((sub("\\.[0-9]+"; "") | sub("\\+00:00$"; "Z")) as $s
      | (if ($s | test("Z$")) then $s else $s + "Z" end)
      | (try fromdateiso8601 catch null))
   else null end;
-def window($bucket; $limit):
-  if ($bucket | type) == "object" and ($bucket.utilization | type) == "number"
-  then { pct: $bucket.utilization,
-         resetsAt: ($bucket.resets_at | epoch),
-         severity: (if ($limit | type) == "object" and ($limit.severity | type) == "string"
-                    then $limit.severity else "" end) }
-  else null end;
-((.limits // []) | map(select(type == "object"))) as $limits
-| ($limits | map(select(.kind == "session")) | first) as $session
-| ($limits | map(select(.kind == "weekly_all")) | first) as $weekly
-| { available: true, ok: true,
-    planType: $plan,
-    fiveHour: window(.five_hour; $session),
-    weekly: window(.seven_day; $weekly),
-    scoped: [ $limits[]
-      | select(.kind == "weekly_scoped" and (.percent | type) == "number")
-      | { label: (.scope | objects | .model | objects | .display_name | strings),
-          pct: .percent,
-          resetsAt: (.resets_at | epoch),
-          severity: (if (.severity | type) == "string" then .severity else "" end) }
-      | select(.label != "") ] }'
+{ available: true, ok: true,
+  providers: [ (.entries // [])[]
+    | select(.status == "ready")
+    | { id: .id,
+        name: (.display_name // .id),
+        # A vendor with no plan name reports its masked API key there instead
+        # ("OpenRouter — sk-or-...abc"). A key fragment does not belong on a
+        # panel, so a masked plan loses its key half, and a plan that then only
+        # repeats the vendor name is dropped.
+        plan: ((.display_name // .id) as $n
+          | (.plan // "")
+          | (if contains("...") then (split(" — ")[0] // "") else . end)
+          | (if . == $n then "" else . end)),
+        windows: [ (.metrics // [])[]
+          | select((.percent | type) == "number")
+          | { label: .label, pct: .percent,
+              resetsAt: ((.reset_at | epoch) // 0),
+              severity: (.severity // "") } ],
+        blocks: [ (.sections // [])[]
+          | select(.type == "block")
+          | { label: .label, lines: .body } ] } ] }'
 
-D=$(mktemp -d) || exit 1
+D=$(mktemp -d) || { printf '{"available":true,"ok":false}\n'; exit 0; }
 trap 'rm -rf "$D"' EXIT
-
-CODE=$(printf 'header = "Authorization: Bearer %s"\n' "$TOK" \
-  | curl -s --max-time 15 -K - -o "$D/body" -w '%{http_code}' \
-      -H 'anthropic-beta: oauth-2025-04-20' \
-      -H "User-Agent: claude-code/$CCV" \
-      https://api.anthropic.com/api/oauth/usage 2>/dev/null)
-case "$CODE" in ''|*[!0-9]*) CODE=0 ;; esac
-if [ "$CODE" != 200 ]; then
+if ! ai-usagebar usage --json > "$D/usage" 2>/dev/null; then
   printf '{"available":true,"ok":false}\n'
   exit 0
 fi
-
-OUT=$(jq -c --arg plan "$PLAN" "$CLAUDE_FILTER" "$D/body" 2>/dev/null)
-[ -n "$OUT" ] || OUT='{"available":true,"ok":false}'
-printf '%s\n' "$OUT"
-]==]
-
--- Codex keeps its rate limits behind the same app-server the IDE extensions talk
--- to. Asking it costs no tokens and starts no session, which is why this is a
--- JSON-RPC round trip rather than a scrape of ~/.codex — nothing here writes into
--- that directory.
---
--- The fifo is load-bearing. The server exits the moment stdin closes, so the two
--- requests cannot simply be piped in: fd 3 has to stay open until the reply for
--- id 2 has landed.
-local CODEX_SCRIPT = [==[
-command -v codex >/dev/null 2>&1 || { printf '{"available":false}\n'; exit 0; }
-
-CODEX_FILTER='
-def window($w):
-  if ($w | type) == "object" and ($w.usedPercent | type) == "number"
-  then { pct: $w.usedPercent,
-         resetsAt: (if ($w.resetsAt | type) == "number" then $w.resetsAt else 0 end),
-         windowMins: (if ($w.windowDurationMins | type) == "number" then $w.windowDurationMins else 0 end) }
-  else null end;
-(.result.rateLimits // null) as $r
-| if ($r | type) != "object" then { available: true, ok: false }
-  else { available: true, ok: true,
-         primary: window($r.primary),
-         secondary: window($r.secondary),
-         credits: (if ($r.credits | type) == "object" and $r.credits.hasCredits == true
-                   then { balance: (($r.credits.balance // "") | tostring),
-                          unlimited: ($r.credits.unlimited == true) }
-                   else null end),
-         planType: (if ($r.planType | type) == "string" then $r.planType else "" end) }
-  end'
-
-D=$(mktemp -d) || exit 1
-trap 'rm -rf "$D"' EXIT
-mkfifo "$D/in" || exit 1
-
-timeout 20 codex app-server < "$D/in" > "$D/out" 2>/dev/null &
-SRV=$!
-exec 3> "$D/in"
-printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"noctalia","version":"1"}}}' >&3
-printf '%s\n' '{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read","params":{}}' >&3
-
-I=0
-while [ "$I" -lt 200 ]; do
-  grep -q '"id":2' "$D/out" 2>/dev/null && break
-  sleep 0.1
-  I=$(( I + 1 ))
-done
-exec 3>&-
-kill "$SRV" 2>/dev/null
-wait "$SRV" 2>/dev/null
-
-LINE=$(grep -m1 '"id":2' "$D/out" 2>/dev/null)
-if [ -z "$LINE" ]; then
+OUT=$(jq -c "$AIUB_FILTER" "$D/usage" 2>/dev/null)
+if [ -z "$OUT" ]; then
   printf '{"available":true,"ok":false}\n'
   exit 0
 fi
-
-OUT=$(printf '%s\n' "$LINE" | jq -c "$CODEX_FILTER" 2>/dev/null)
-[ -n "$OUT" ] || OUT='{"available":true,"ok":false}'
 printf '%s\n' "$OUT"
 ]==]
 
@@ -460,11 +345,8 @@ local rawStandalone = {} -- last scan's session list, before the t3-owned filter
 -- sessions t3 owns, so it needs to be able to re-apply the filter.
 local applyStandaloneFilter
 
-local claudeBusy = false
-local codexBusy = false
-local claudeCheckedAt = 0 -- epoch seconds of the last attempt; 0 means "never asked"
-local codexCheckedAt = 0
-local claudeVersion = CLAUDE_VERSION_FALLBACK
+local limitsBusy = false
+local limitsCheckedAt = 0 -- epoch seconds of the last attempt; 0 means "never asked"
 
 -- What the fast loop last saw in flight, and the edge it raises when some of it
 -- is gone. The flag is read and cleared by the next limit tick rather than acted
@@ -473,11 +355,11 @@ local runningThreads = {}
 local liveTasks = {}
 local workEnded = false
 
--- available=false is the hidden state: no credentials file, or no codex binary.
--- available=true with no windows is "installed, nothing to show yet".
 local limitsState = {
-  claude = { available = false, stale = false, at = 0 },
-  codex = { available = false, stale = false, at = 0 },
+  available = false,
+  stale = false,
+  at = 0,
+  providers = {},
 }
 
 local sessionsState = {
@@ -623,7 +505,7 @@ local function normalizeContext(rows)
 end
 
 -- The one thing that can move a subscription window is work that ran, so the
--- limit loops are driven from here: a thread that is no longer running, or a
+-- limit loop is driven from here: a thread that is no longer running, or a
 -- subagent that is no longer live, means tokens were spent and the providers
 -- have something new to say. Work *starting* is deliberately not a trigger —
 -- asking mid-turn costs a call and answers with the number from before it.
@@ -972,7 +854,7 @@ local function runRemoteTick()
 end
 
 -- ==============================================================================
--- ── LIMIT LOOPS ────────────────────────────────────────────────────────────
+-- ── LIMIT LOOP ─────────────────────────────────────────────────────────────
 -- ==============================================================================
 
 local function publishLimits()
@@ -985,28 +867,62 @@ local function limitWindow(row)
   if pct == nil then return nil end
   if pct < 0 then pct = 0 end
   return {
+    label = type(row.label) == "string" and row.label or "",
     pct = pct,
     resetsAt = math.floor(tonumber(row.resetsAt) or 0),
     severity = type(row.severity) == "string" and row.severity or "",
-    windowMins = math.floor(tonumber(row.windowMins) or 0),
   }
 end
 
--- Per-model weekly ceilings. Each carries the display name the server gave it,
--- because these are the only windows the plugin cannot name for itself.
-local function limitScoped(rows)
-  local scoped = {}
-  if type(rows) ~= "table" then return scoped end
+local function limitWindows(rows)
+  local windows = {}
+  if type(rows) ~= "table" then return windows end
   for _, row in ipairs(rows) do
-    if type(row) == "table" and type(row.label) == "string" and row.label ~= "" then
-      local window = limitWindow(row)
-      if window ~= nil then
-        window.label = row.label
-        table.insert(scoped, window)
+    local window = limitWindow(row)
+    if window ~= nil then table.insert(windows, window) end
+  end
+  return windows
+end
+
+local function limitBlocks(rows)
+  local blocks = {}
+  if type(rows) ~= "table" then return blocks end
+  for _, row in ipairs(rows) do
+    if type(row) == "table" then
+      local lines = {}
+      if type(row.lines) == "table" then
+        for _, line in ipairs(row.lines) do
+          if type(line) == "string" then table.insert(lines, line) end
+        end
+      end
+      table.insert(blocks, {
+        label = type(row.label) == "string" and row.label or "",
+        lines = lines,
+      })
+    end
+  end
+  return blocks
+end
+
+local function limitProviders(rows)
+  local providers = {}
+  if type(rows) ~= "table" then return providers end
+  for _, row in ipairs(rows) do
+    if type(row) == "table" and type(row.id) == "string" and row.id ~= "" then
+      local windows = limitWindows(row.windows)
+      local blocks = limitBlocks(row.blocks)
+      if #windows > 0 or #blocks > 0 then
+        table.insert(providers, {
+          id = row.id,
+          name = type(row.name) == "string" and row.name or row.id,
+          plan = type(row.plan) == "string" and row.plan or "",
+          windows = windows,
+          blocks = blocks,
+        })
       end
     end
   end
-  return scoped
+  return providers
 end
 
 -- A provider that answers badly keeps whatever it last said. A number an hour
@@ -1024,86 +940,36 @@ local function limitPayload(result)
   return payload
 end
 
-local function claudeCommand()
-  return "CCV=" .. shellQuote(claudeVersion) .. "\n" .. CLAUDE_SCRIPT
-end
+local function runLimitsTick()
+  if limitsBusy then return end
+  limitsBusy = true
+  limitsCheckedAt = nowS()
 
-local function runClaudeTick()
-  if claudeBusy then return end
-  claudeBusy = true
-  claudeCheckedAt = nowS()
-
-  noctalia.runAsync(claudeCommand(), function(result)
-    claudeBusy = false
+  noctalia.runAsync(AIUB_SCRIPT, function(result)
+    limitsBusy = false
     local payload = limitPayload(result)
     if payload == nil then
-      markStale(limitsState.claude)
+      markStale(limitsState)
       return
     end
     if payload.available ~= true then
-      limitsState.claude = { available = false, stale = false, at = 0 }
+      limitsState = { available = false, stale = false, at = 0, providers = {} }
       publishLimits()
       return
     end
     if payload.ok ~= true then
-      markStale(limitsState.claude)
+      markStale(limitsState)
       return
     end
 
-    limitsState.claude = {
+    limitsState = {
       available = true,
-      fiveHour = limitWindow(payload.fiveHour),
-      weekly = limitWindow(payload.weekly),
-      scoped = limitScoped(payload.scoped),
-      planType = type(payload.planType) == "string" and payload.planType or "",
       stale = false,
       at = nowS(),
+      providers = limitProviders(payload.providers),
     }
     publishLimits()
-  end, CLAUDE_TIMEOUT_MS)
-end
-
-local function runCodexTick()
-  if codexBusy then return end
-  codexBusy = true
-  codexCheckedAt = nowS()
-
-  noctalia.runAsync(CODEX_SCRIPT, function(result)
-    codexBusy = false
-    local payload = limitPayload(result)
-    if payload == nil then
-      markStale(limitsState.codex)
-      return
-    end
-    if payload.available ~= true then
-      limitsState.codex = { available = false, stale = false, at = 0 }
-      publishLimits()
-      return
-    end
-    if payload.ok ~= true then
-      markStale(limitsState.codex)
-      return
-    end
-
-    local credits = nil
-    if type(payload.credits) == "table" then
-      credits = {
-        balance = type(payload.credits.balance) == "string" and payload.credits.balance or "",
-        unlimited = payload.credits.unlimited == true,
-      }
-    end
-
-    limitsState.codex = {
-      available = true,
-      primary = limitWindow(payload.primary),
-      secondary = limitWindow(payload.secondary),
-      credits = credits,
-      planType = type(payload.planType) == "string" and payload.planType or "",
-      stale = false,
-      at = nowS(),
-    }
-    publishLimits()
-  end, CODEX_TIMEOUT_MS)
+  end, AIUB_TIMEOUT_MS)
 end
 
 -- A window whose reset time has come around says nothing useful any more: the
@@ -1111,18 +977,14 @@ end
 -- dropped. That is worth one call even on a machine where nothing is running.
 local function rolledOver(entry, now)
   if type(entry) ~= "table" or entry.available ~= true then return false end
-  local function past(window)
-    if type(window) ~= "table" then return false end
-    local resetsAt = tonumber(window.resetsAt) or 0
-    return resetsAt > 0 and now >= resetsAt
-  end
-  if past(entry.fiveHour) or past(entry.weekly)
-    or past(entry.primary) or past(entry.secondary) then
-    return true
-  end
-  if type(entry.scoped) == "table" then
-    for _, window in ipairs(entry.scoped) do
-      if past(window) then return true end
+  if type(entry.providers) == "table" then
+    for _, provider in ipairs(entry.providers) do
+      if type(provider.windows) == "table" then
+        for _, window in ipairs(provider.windows) do
+          local resetsAt = type(window) == "table" and (tonumber(window.resetsAt) or 0) or 0
+          if resetsAt > 0 and now >= resetsAt then return true end
+        end
+      end
     end
   end
   return false
@@ -1149,21 +1011,7 @@ local function runLimitTicks()
   local ended = workEnded
   workEnded = false
 
-  if limitDue(claudeCheckedAt, limitsState.claude, now, gap, ended) then runClaudeTick() end
-  if limitDue(codexCheckedAt, limitsState.codex, now, gap, ended) then runCodexTick() end
-end
-
--- One subprocess at boot rather than one per limit check: the version is only
--- there to make the User-Agent look like the client the endpoint expects, and it
--- changes when the CLI is upgraded, not while it runs.
-local function resolveClaudeVersion()
-  noctalia.runAsync("claude --version 2>/dev/null | cut -d' ' -f1", function(result)
-    if type(result) ~= "table" or result.exitCode ~= 0 then return end
-    local version = noctalia.string.trim(result.stdout or "")
-    if version:match("^[%w%.%-]+$") ~= nil then
-      claudeVersion = version
-    end
-  end, 10000)
+  if limitDue(limitsCheckedAt, limitsState, now, gap, ended) then runLimitsTick() end
 end
 
 -- ==============================================================================
@@ -1196,11 +1044,9 @@ function onConfigChanged()
   -- than at the next cadence tick; the in-flight guard makes this free if a read
   -- is already out.
   runRemoteTick()
-  -- Saving a setting is not a reason to spend a call against a bucket the CLI
-  -- shares, so the limit loops keep their gap through this. A provider that has
-  -- never reported is the exception, so switching the section on shows something.
-  if limitsState.claude.at == 0 then claudeCheckedAt = 0 end
-  if limitsState.codex.at == 0 then codexCheckedAt = 0 end
+  -- Saving a setting is not a reason to spend a call, so the limit loop keeps its
+  -- gap through this. A first read is the exception when the section is enabled.
+  if limitsState.at == 0 then limitsCheckedAt = 0 end
 end
 
 function onEnable()
@@ -1219,6 +1065,4 @@ downSnapshot("")
 runFastTick()
 runSessionsTick()
 runRemoteTick()
--- The limit loops wait for the first update() tick, which is long enough for the
--- version lookup above to have landed and short enough that nobody notices.
-resolveClaudeVersion()
+-- The limit loop waits for the first update() tick.

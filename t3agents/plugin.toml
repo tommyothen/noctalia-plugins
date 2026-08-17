@@ -14,16 +14,14 @@
 #
 # API level 23 is the highest this host accepts (5.0.0_beta.8 supports 3-23), so
 # every subprocess goes through the string form of runAsync. Nothing user-supplied
-# is interpolated into a command line, and the two constants that are get run
+# is interpolated into a command line, and the constants that are get run
 # through shellQuote anyway.
 #
-# Two further loops ask each provider how much of its subscription window is gone:
-# Claude over its usage endpoint, Codex over the local app-server. They have no
-# cadence of their own — the fast loop triggers them when it sees work finish, no
-# more often than limits_gap_s — so an idle machine makes no calls at all. Both
-# credentials are read from the user's own files at the moment of the call and
-# never stored, embedded or logged; the Claude token reaches curl down a pipe so it
-# stays out of argv. Nothing is ever written back to either CLI's directory.
+# One further loop asks ai-usagebar for every enabled provider's subscription
+# windows. It has no cadence of its own: the fast loop triggers it when work
+# finishes, no more often than limits_gap_s, so an idle machine makes no calls.
+# ai-usagebar adds its own 60-second on-disk response cache and owns every
+# credential. This plugin never touches a token.
 #
 # t3-connect threads from other machines round out the picture. t3-code caches
 # each connected environment's thread state as plaintext JSON in its Electron
@@ -35,19 +33,18 @@
 #
 # Everything degrades rather than fails. No ~/.t3/userdata/server-runtime.json means
 # t3 is not running, so the thread sections say so and the session scan carries on;
-# a SQL error becomes a banner in the panel instead of a dead plugin. Neither
-# provider CLI is required: the one that is missing loses its row, and a provider
-# that cannot be reached keeps its last answer, dimmed. A missing IndexedDB cache
-# means no remote threads and no error.
+# a SQL error becomes a banner in the panel instead of a dead plugin. A provider
+# that is not ready loses its row, and a failed ai-usagebar fetch keeps the last
+# answer dimmed. A missing IndexedDB cache means no remote threads and no error.
 
 id = "tommyothen/t3agents"
 name = "T3 Agents"
-version = "0.2.0"
+version = "0.3.0"
 plugin_api = 23
 author = "tommyothen"
 license = "MIT"
 icon = "robot"
-dependencies = ["sqlite3", "jq", "curl", "python3"]
+dependencies = ["sqlite3", "jq", "python3", "ai-usagebar"]
 tags = ["ai", "agents", "limits", "bar", "panel"]
 description = "Live t3-code threads and subagents, and how much of each subscription window is left, in the bar."
 
@@ -77,9 +74,8 @@ default = true
 
 # The limit checks are event-driven: work finishing is what moves a subscription
 # window, so the fast loop asks for a refresh when a thread stops running or a
-# subagent goes away. This is the floor between two of those asks, per provider.
-# It matters most for Claude, whose endpoint is rate-limited against the same
-# token the CLI uses, so every call this plugin makes is one the CLI cannot.
+# subagent goes away. This is the floor between two of those asks. ai-usagebar
+# also caches provider responses on disk for 60 seconds.
 [[setting]]
 key = "limits_gap_s"
 type = "int"
