@@ -16,14 +16,15 @@ a Noctalia plugin source, so it can be added directly to the shell rather than c
 
 ## Installing
 
-Add this checkout as a `path` source and enable what you want:
+Add the repo as a git source and enable what you want:
 
 ```sh
-noctalia msg plugins source add tommy path ~/Programming/noctalia-plugins
+noctalia msg plugins source add tommyothen git https://github.com/tommyothen/noctalia-plugins
 noctalia msg plugins enable tommyothen/mediapaper
 ```
 
-`.luau` edits hot reload. Changes to `plugin.toml` land on the next config reload.
+To hack on a plugin, clone the repo and add the checkout as a `path` source instead: `.luau` edits
+hot reload, and changes to `plugin.toml` land on the next config reload.
 
 ## Layout
 
