@@ -287,11 +287,20 @@ def epoch:
           | (.plan // "")
           | (if contains("...") then (split(" — ")[0] // "") else . end)
           | (if . == $n then "" else . end)),
+        # elapsed is how far through its window a metric is, and it only exists
+        # inside the human-readable detail string, so it is parsed back out.
+        # Windows without one (credit balances) simply carry null.
         windows: [ (.metrics // [])[]
           | select((.percent | type) == "number")
           | { label: .label, pct: .percent,
+              # value is the number the vendor would print: usually "52%", but a
+              # balance vendor reports the money remaining ("$17.67") while pct
+              # carries the share used. The panel shows value and bars pct.
+              value: (.value // ""),
               resetsAt: ((.reset_at | epoch) // 0),
-              severity: (.severity // "") } ],
+              severity: (.severity // ""),
+              elapsed: ((((.detail // "")
+                | capture("(?<e>[0-9]+)% elapsed") | .e | tonumber)? // null)) } ],
         blocks: [ (.sections // [])[]
           | select(.type == "block")
           | { label: .label, lines: .body } ] } ] }'
@@ -866,11 +875,15 @@ local function limitWindow(row)
   local pct = tonumber(row.pct)
   if pct == nil then return nil end
   if pct < 0 then pct = 0 end
+  local elapsed = tonumber(row.elapsed)
+  if elapsed ~= nil then elapsed = math.clamp(elapsed, 0, 100) end
   return {
     label = type(row.label) == "string" and row.label or "",
     pct = pct,
+    value = type(row.value) == "string" and row.value or "",
     resetsAt = math.floor(tonumber(row.resetsAt) or 0),
     severity = type(row.severity) == "string" and row.severity or "",
+    elapsed = elapsed,
   }
 end
 

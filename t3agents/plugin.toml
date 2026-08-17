@@ -39,7 +39,7 @@
 
 id = "tommyothen/t3agents"
 name = "T3 Agents"
-version = "0.3.0"
+version = "0.3.1"
 plugin_api = 23
 author = "tommyothen"
 license = "MIT"

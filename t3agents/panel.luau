@@ -25,12 +25,14 @@ local SMALL_BAR_HEIGHT = 4
 -- roughly this point a long turn is one tool result away from a compaction.
 local CONTEXT_ALARM = 0.9
 
--- Where a subscription window stops being background information. Providers can
--- supply a severity; the percentage thresholds cover unknown values.
+-- Where a subscription window stops being background information. ai-usagebar's
+-- severity is itself a percentage ramp (mid from 50, high from 75, critical from
+-- 90), so "mid" is not a warning: half-spent is the normal middle of a window.
+-- Color starts at "high", and the percentage thresholds cover unknown values.
 local LIMIT_WARN_PCT = 70
 local LIMIT_ALARM_PCT = 90
-local SEVERITY_ELEVATED = { warning = true, elevated = true, mid = true }
-local SEVERITY_CRITICAL = { critical = true, exceeded = true, exhausted = true, blocked = true, high = true }
+local SEVERITY_ELEVATED = { warning = true, elevated = true, high = true }
+local SEVERITY_CRITICAL = { critical = true, exceeded = true, exhausted = true, blocked = true }
 
 -- Remote threads come off a cache that only moves while the t3-code app runs. Past
 -- this age since an environment's newest thread was touched, its subheader carries
@@ -182,6 +184,7 @@ local function limitPart(window)
   if type(window) ~= "table" then return "" end
   return table.concat({
     tostring(tonumber(window.pct) or 0), tostring(window.resetsAt or 0), tostring(window.severity or ""),
+    tostring(window.elapsed or ""), tostring(window.value or ""),
   }, "\3")
 end
 
@@ -235,6 +238,10 @@ local function fingerprint(snap, sess, lim, rem)
     table.insert(parts, table.concat(providerParts, "\5"))
   end
   table.insert(parts, table.concat({ tostring(lim.stale), tostring(lim.at) }, "\2"))
+  -- The minute bucket keeps every relative time ("resets in 1h 45m", "12m ago")
+  -- from freezing between data changes: update() ticks each second and this
+  -- moves the fingerprint once a minute.
+  table.insert(parts, tostring(math.floor(nowS() / 60)))
   return table.concat(parts, "\1")
 end
 
@@ -396,26 +403,102 @@ local function limitBar(pct, color, height)
   })
 end
 
+-- Usage alone does not say whether a window is in trouble; usage against how far
+-- the window has drained does. The notch marks the elapsed point, so fill short
+-- of the notch is under pace and fill past it is burning ahead. A window with no
+-- elapsed figure (a credit balance) falls back to the plain bar.
+local function paceBar(window, color, height)
+  local pct = math.clamp(tonumber(window.pct) or 0, 0, 100)
+  local elapsed = tonumber(window.elapsed)
+  if elapsed == nil then return limitBar(pct, color, height) end
+  elapsed = math.clamp(elapsed, 0, 100)
+
+  -- The notch sits inside the fill when usage is ahead of the window, so it
+  -- contrasts against the fill there and against the track otherwise.
+  local parts = {}
+  local function seg(width, fill)
+    if width > 0.5 then table.insert(parts, { grow = width, fill = fill }) end
+  end
+  if pct <= elapsed then
+    seg(pct, color)
+    seg(elapsed - pct, "surface_variant")
+    table.insert(parts, { px = 2, fill = "on_surface_variant" })
+    seg(100 - elapsed, "surface_variant")
+  else
+    seg(elapsed, color)
+    table.insert(parts, { px = 2, fill = "surface" })
+    seg(pct - elapsed, color)
+    seg(100 - pct, "surface_variant")
+  end
+
+  local children = {}
+  for i, part in ipairs(parts) do
+    local radius = (i == 1 or i == #parts) and height / 2 or 0
+    table.insert(children, ui.box({
+      flexGrow = part.grow or 0, width = part.px, height = height,
+      fill = part.fill, radius = radius,
+    }))
+  end
+  return ui.row({ gap = 0, align = "center", flexGrow = 1 }, children)
+end
+
 -- A secondary window: named, thinner, and otherwise the primary bar's twin. Every
 -- window under a provider's headline one is drawn this way, whether it is a
 -- longer period or a single model's own ceiling.
-local function smallLimitRow(label, window, stale)
+-- A metric with no reset date and no pacing is a balance, not a window: there is
+-- no period to spend it against, so a consumed-share bar says nothing a figure
+-- does not. Those render as the number alone.
+local function isBalance(window)
+  return (tonumber(window.resetsAt) or 0) == 0 and tonumber(window.elapsed) == nil
+end
+
+-- The notch says it in shape; this says it in words. Usage points ahead of or
+-- behind the window's own progress, worded only when there is pacing to compare.
+local function paceText(window)
+  local elapsed = tonumber(window.elapsed)
+  if elapsed == nil then return "" end
+  local delta = math.floor((tonumber(window.pct) or 0) - elapsed + 0.5)
+  if delta >= 1 then return tr("limits.pace_ahead", { n = delta }) end
+  if delta <= -1 then return tr("limits.pace_under", { n = -delta }) end
+  return tr("limits.pace_on")
+end
+
+local function smallLimitRow(label, window, stale, now)
   local pct = tonumber(window.pct) or 0
   local color = limitColor(pct, window.severity, stale)
-  return ui.row({ gap = 6, align = "center" }, {
+  if isBalance(window) then
+    return ui.row({ gap = 6, align = "center" }, {
+      ui.row({ width = 64, align = "center" }, {
+        ui.label({ text = label, fontSize = 10, color = "on_surface_variant", maxLines = 1 }),
+      }),
+      ui.spacer({ flexGrow = 1 }),
+      ui.label({ text = text(window.value, percent(pct)), fontSize = 10, color = color }),
+    })
+  end
+  local children = {
     -- Fixed-width wrapper so every small bar starts at the same x. Width is a
     -- container prop, not a label one.
     ui.row({ width = 64, align = "center" }, {
       ui.label({ text = label, fontSize = 10, color = "on_surface_variant", maxLines = 1 }),
     }),
-    limitBar(pct, color, SMALL_BAR_HEIGHT),
-    ui.label({ text = percent(pct), fontSize = 10, color = color }),
-  })
+    paceBar(window, color, SMALL_BAR_HEIGHT),
+    ui.label({ text = text(window.value, percent(pct)), fontSize = 10, color = color }),
+  }
+  if (tonumber(window.resetsAt) or 0) > 0 then
+    table.insert(children, ui.label({
+      text = countdown(window.resetsAt, now), fontSize = 10, color = "on_surface_variant",
+    }))
+  end
+  return ui.row({ gap = 6, align = "center" }, children)
 end
 
 local function providerTitle(name, plan)
   if type(plan) ~= "string" or plan == "" then return name end
-  return tr("limits.provider_plan", { name = name, plan = plan:sub(1, 1):upper() .. plan:sub(2) })
+  local pretty = plan:sub(1, 1):upper() .. plan:sub(2)
+  -- "Claude" + "Claude Max 5x" would read "Claude Claude Max 5x"; a plan that
+  -- already opens with the provider's name is the whole title.
+  if pretty:sub(1, #name):lower() == name:lower() then return pretty end
+  return tr("limits.provider_plan", { name = name, plan = pretty })
 end
 
 -- One provider: the first window as a bar, then its remaining windows and blocks.
@@ -439,12 +522,17 @@ local function limitCard(key, name, window, sublabel, extras, stale, at, now)
       fontSize = 11, color = "on_surface_variant",
     }))
   end
-  table.insert(head, ui.label({ text = percent(pct), fontSize = 12, fontWeight = "bold", color = color }))
+  table.insert(head, ui.label({ text = text(window.value, percent(pct)), fontSize = 12, fontWeight = "bold", color = color }))
 
-  local rows = {
-    ui.row({ gap = 6, align = "center" }, head),
-    ui.row({ gap = 8, align = "center" }, { limitBar(pct, color, BAR_HEIGHT) }),
-  }
+  local rows = { ui.row({ gap = 6, align = "center" }, head) }
+  if not isBalance(window) then
+    local barRow = { paceBar(window, color, BAR_HEIGHT) }
+    local pace = paceText(window)
+    if pace ~= "" then
+      table.insert(barRow, ui.label({ text = pace, fontSize = 10, color = "on_surface_variant" }))
+    end
+    table.insert(rows, ui.row({ gap = 8, align = "center" }, barRow))
+  end
   for _, extra in ipairs(extras) do
     table.insert(rows, extra)
   end
@@ -462,24 +550,37 @@ local function providerCard(provider, now, stale, at)
   for i = 2, #provider.windows do
     local window = provider.windows[i]
     if type(window) == "table" then
-      table.insert(extras, smallLimitRow(text(window.label, ""), window, stale))
+      table.insert(extras, smallLimitRow(text(window.label, ""), window, stale, now))
     end
   end
   if type(provider.blocks) == "table" then
     for _, block in ipairs(provider.blocks) do
-      local first = type(block.lines) == "table" and block.lines[1] or nil
-      if type(first) == "string" and first ~= "" then
-        first = first:gsub("(%d+%.%d%d)%d+", "%1")
+      local lines = {}
+      if type(block.lines) == "table" then
+        for _, line in ipairs(block.lines) do
+          if type(line) == "string" and line ~= "" then
+            -- "Credits: balance: 152.37" says balance twice; the label already
+            -- names the figure.
+            line = line:gsub("^balance:%s*", ""):gsub("(%d+%.%d%d)%d+", "%1")
+            table.insert(lines, line)
+          end
+        end
+      end
+      if #lines > 0 then
         local label = type(block.label) == "string" and block.label or ""
         table.insert(extras, ui.row({ gap = 6, align = "center" }, {
           ui.glyph({ name = label == "Credits" and "coin" or "info-circle", size = 11, color = "on_surface_variant" }),
-          ui.label({ text = label .. ": " .. first, fontSize = 10, color = "on_surface_variant", flexGrow = 1 }),
+          ui.label({
+            text = label .. ": " .. table.concat(lines, " · "),
+            fontSize = 10, color = "on_surface_variant", flexGrow = 1, maxLines = 1,
+          }),
         }))
       end
     end
   end
 
-  return limitCard("limit-" .. tostring(provider.id), providerTitle(text(provider.name, tostring(provider.id)), provider.plan),
+  return limitCard("limit-" .. tostring(provider.id),
+    providerTitle(text(provider.name, tostring(provider.id)), provider.plan),
     primary, text(primary.label, ""), extras, stale, at, now)
 end
 
@@ -515,21 +616,6 @@ local function render()
   }
 
   local body = {}
-
-  -- Subscription windows go first: they are the one thing on this panel that
-  -- decides whether the work below it can happen at all. A provider that is not
-  -- available contributes nothing, and no cards means no section.
-  local limitCards = {}
-  for _, provider in ipairs(lim.providers) do
-    local card = providerCard(provider, now, lim.stale, lim.at)
-    if card ~= nil then table.insert(limitCards, card) end
-  end
-  if #limitCards > 0 then
-    table.insert(body, sectionHeader("gauge", tr("panel.limits"), ""))
-    for _, card in ipairs(limitCards) do
-      table.insert(body, card)
-    end
-  end
 
   if snap.errorBanner ~= "" then
     table.insert(body, ui.row({
@@ -595,6 +681,23 @@ local function render()
     table.insert(body, sectionHeader("terminal-2", tr("panel.standalone"), tostring(#sess.standalone)))
     for _, session in ipairs(sess.standalone) do
       table.insert(body, sessionRow(session, now))
+    end
+  end
+
+  -- Subscription windows close the panel: the work above is what you came to
+  -- check, the budget below is the standing context under it. A provider that is
+  -- not available contributes nothing, and no cards means no section.
+  local limitCards = {}
+  for _, provider in ipairs(lim.providers) do
+    local card = providerCard(provider, now, lim.stale, lim.at)
+    if card ~= nil then table.insert(limitCards, card) end
+  end
+  if #limitCards > 0 then
+    table.insert(body, sectionHeader("gauge", tr("panel.limits"), ""))
+    for i, card in ipairs(limitCards) do
+      -- A little air between providers; inside a card stays tight.
+      if i > 1 then table.insert(body, ui.spacer({ height = 2 })) end
+      table.insert(body, card)
     end
   end
 

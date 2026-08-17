@@ -23,6 +23,9 @@
     "now": "just now"
   },
   "limits": {
+    "pace_ahead": "{n}pts ahead",
+    "pace_on": "on pace",
+    "pace_under": "{n}pts under",
     "provider_plan": "{name} {plan}",
     "reset_due": "any moment",
     "resets_in": "resets in {time}",
