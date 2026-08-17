@@ -1,0 +1,67 @@
+# Noctalia plugins catalog. Index of every plugin this source ships; the
+# per-plugin plugin.toml stays authoritative and is re-read on enable.
+
+[[plugin]]
+id = "tommyothen/mediapaper"
+name = "Media Wallpaper"
+version = "1.0.0"
+updated_at = 1786221790
+added_at = 1786221790
+author = "tommyothen"
+license = "MIT"
+icon = "photo-video"
+description = "One picker for image and video wallpapers; videos play through mpvpaper."
+plugin_api = 9
+tags = ["wallpaper", "video", "media", "panel"]
+
+[[plugin]]
+id = "tommyothen/away-mode"
+name = "Away Mode"
+version = "0.1.0"
+updated_at = 1786295152
+added_at = 1786295152
+author = "tommyothen"
+license = "MIT"
+icon = "door-exit"
+description = "Step away without the machine suspending: blocks sleep and lid-close while leaving lock and screen-off alone."
+plugin_api = 23
+tags = ["bar", "indicator", "session", "power", "service", "shortcut", "system", "utility"]
+
+[[plugin]]
+id = "tommyothen/t3agents"
+name = "T3 Agents"
+version = "0.2.0"
+updated_at = 1786629153
+added_at = 1786465886
+author = "tommyothen"
+license = "MIT"
+icon = "robot"
+description = "Live t3-code threads and subagents, and how much of each subscription window is left, in the bar."
+plugin_api = 23
+tags = ["ai", "agents", "limits", "bar", "panel"]
+
+[[plugin]]
+id = "tommyothen/bongocat"
+name = "Bongo Cat"
+version = "1.0.0"
+updated_at = 1786807361
+added_at = 1786807361
+author = "tommyothen"
+license = "MIT"
+icon = "cat"
+description = "A cat that slaps your bar when you type or to the beat, and counts your words per minute while it does. Finds your keyboard on its own, remapper included."
+plugin_api = 3
+tags = ["fun", "animation"]
+
+[[plugin]]
+id = "tommyothen/portrait"
+name = "Portrait"
+version = "0.1.0"
+updated_at = 1786884499
+added_at = 1786884499
+author = "tommyothen"
+license = "MIT"
+icon = "rotate-clockwise"
+description = "Rotate a monitor between landscape and portrait with one click, for watching vertical content."
+plugin_api = 23
+tags = ["bar", "indicator", "display", "monitor", "service", "shortcut", "utility"]
