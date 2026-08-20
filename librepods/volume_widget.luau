@@ -24,6 +24,12 @@ local volumePercent = nil
 local muted = false
 local pollBusy = false
 
+-- barWidget.isVertical() only carries the real orientation inside host-driven
+-- calls (update, clicks); runAsync and state.watch callbacks run with a default
+-- snapshot where it is always false. Most renders happen from the wpctl poll
+-- callback, so sample it in update() and let every render use the cached value.
+local vertical = false
+
 local KNOWN_COMPONENTS = { left = true, right = true, case = true, headphone = true }
 local KNOWN_MODES = { off = true, noise_cancellation = true, transparency = true, adaptive = true }
 
@@ -55,12 +61,12 @@ end
 
 -- Everything drawn below, so identical polls never rebuild the tile.
 local function fingerprint(snap)
-  -- isVertical is only computed at the host's first layout, after the initial
-  -- render; keeping it in the fingerprint re-renders once it settles.
+  -- Orientation settles at the host's first layout, after the initial render;
+  -- keeping it in the fingerprint re-renders once update() picks it up.
   local parts = {
     tostring(volumePercent), tostring(muted),
     tostring(noctalia.getConfig("show_percent")),
-    tostring(barWidget.isVertical()),
+    tostring(vertical),
   }
   if airpodsConnected(snap) then
     table.insert(parts, tostring(snap.name))
@@ -99,8 +105,10 @@ local function render()
       color = role,
     }))
   end
-  local ctor = barWidget.isVertical() and ui.column or ui.row
-  barWidget.render(ctor({ gap = 2, align = "center" }, children))
+  -- gap 0: the built-ins place the label at exactly the glyph box's bottom
+  -- edge; the visible breathing room is the glyph's own box padding.
+  local ctor = vertical and ui.column or ui.row
+  barWidget.render(ctor({ gap = 0, align = "center" }, children))
 
   local rows = {}
   local volumeValue = volumePercent ~= nil and `{volumePercent}%` or "?"
@@ -154,6 +162,7 @@ local function poll()
 end
 
 function update()
+  vertical = barWidget.isVertical()
   poll()
   renderIfChanged()
 end
