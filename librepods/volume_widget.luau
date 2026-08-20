@@ -55,9 +55,12 @@ end
 
 -- Everything drawn below, so identical polls never rebuild the tile.
 local function fingerprint(snap)
+  -- isVertical is only computed at the host's first layout, after the initial
+  -- render; keeping it in the fingerprint re-renders once it settles.
   local parts = {
     tostring(volumePercent), tostring(muted),
     tostring(noctalia.getConfig("show_percent")),
+    tostring(barWidget.isVertical()),
   }
   if airpodsConnected(snap) then
     table.insert(parts, tostring(snap.name))
