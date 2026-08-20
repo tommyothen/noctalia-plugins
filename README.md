@@ -8,8 +8,10 @@ a Noctalia plugin source, so it can be added directly to the shell rather than c
 
 | Plugin | ID | What it does |
 | --- | --- | --- |
+| [Airplane Mode](airplane-mode/) | `tommyothen/airplane-mode` | Every radio off in one tap, the phone toggle the shell doesn't ship. Runs over rfkill. |
 | [Away Mode](away-mode/) | `tommyothen/away-mode` | One toggle for stepping away: blocks suspend and lid-close, keeps lock and screen-off. |
 | [Bongo Cat](bongocat/) | `tommyothen/bongocat` | The bar cat that slaps when you type, with your wpm next to it. Finds the keyboard itself, including the virtual one keyd emits on. |
+| [LibrePods](librepods/) | `tommyothen/librepods` | AirPods battery, ear detection and noise control in the bar. Needs [my librepods fork](https://github.com/tommyothen/librepods) until the Rust rewrite grows a CLI. |
 | [Media Wallpaper](mediapaper/) | `tommyothen/mediapaper` | One picker for image and video wallpapers. Videos play through mpvpaper. |
 | [Portrait](portrait/) | `tommyothen/portrait` | One toggle to turn a monitor sideways for vertical content, via niri output transforms. |
 | [T3 Agents](t3agents/) | `tommyothen/t3agents` | Live dashboard for t3-code: subscription limits, active threads and agents, local and remote. |
