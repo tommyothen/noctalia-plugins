@@ -133,11 +133,13 @@ local function batteryRow(entry)
 end
 
 -- The selector is built from what this device actually allows, so a model
--- without Adaptive simply never shows the segment.
+-- without Adaptive simply never shows the segment. Two segments per row: four
+-- across overflows the panel ("Transparency" alone nearly fills half).
 local function modeSelector(snap)
-  local segments = {}
-  for _, mode in ipairs(snap.allowedModes) do
-    table.insert(segments, ui.button({
+  local rows = {}
+  local pending = {}
+  for index, mode in ipairs(snap.allowedModes) do
+    table.insert(pending, ui.button({
       key = "mode-" .. tostring(mode),
       text = modeLabel(mode),
       variant = mode == snap.mode and "primary" or "outline",
@@ -146,8 +148,12 @@ local function modeSelector(snap)
       end,
       flexGrow = 1,
     }))
+    if #pending == 2 or index == #snap.allowedModes then
+      table.insert(rows, ui.row({ key = "modes-row-" .. #rows, gap = 6, align = "center" }, pending))
+      pending = {}
+    end
   end
-  return ui.row({ key = "modes", gap = 6, align = "center" }, segments)
+  return ui.column({ key = "modes", gap = 6, align = "stretch" }, rows)
 end
 
 -- ==============================================================================
