@@ -84,8 +84,10 @@ local function render()
   barWidget.setGlyphColor(role)
   barWidget.setColor(role)
 
+  -- Bare number, no suffix: the built-in brightness and battery tiles show
+  -- "65" and "98", so "55%" reads out of place next to them.
   if noctalia.getConfig("show_percent") == true and volumePercent ~= nil then
-    barWidget.setText(`{volumePercent}%`)
+    barWidget.setText(tostring(volumePercent))
   else
     barWidget.setText("")
   end
