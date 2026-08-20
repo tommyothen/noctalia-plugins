@@ -1,0 +1,10 @@
+{
+  "title": "Airplane Mode",
+  "shortcut": {
+    "off": "Off",
+    "on": "On"
+  },
+  "error": {
+    "command_failed": "The rfkill command failed. Write access to /dev/rfkill is required (rfkill group)."
+  }
+}

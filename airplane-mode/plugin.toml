@@ -1,0 +1,33 @@
+# Airplane Mode. Every radio off in one tap, like the phone toggle noctalia
+# does not ship (wifi and bluetooth only exist as separate tiles).
+#
+# A headless [[service]] owns the rfkill state: one `rfkill -J` poll per tick
+# decides "on" (every soft-blockable radio blocked; hard-blocked devices, a
+# laptop's physical switch, are excluded since software cannot change them),
+# and a toggle runs `rfkill block all` / `rfkill unblock all`, re-polling on
+# completion. The [[shortcut]] is a pure subscriber over a shared state
+# channel, the same shape as tommyothen/away-mode.
+#
+# Needs write access to /dev/rfkill (the rfkill group on Arch's default udev
+# rules); without it the toggle fails with a notification.
+
+id = "tommyothen/airplane-mode"
+name = "Airplane Mode"
+version = "0.1.0"
+plugin_api = 23
+author = "tommyothen"
+license = "MIT"
+icon = "plane"
+dependencies = ["rfkill"]
+tags = ["shortcut", "network", "bluetooth", "service", "system", "utility"]
+description = "Block and unblock every radio in one tap, phone-style airplane mode over rfkill."
+
+# Owns the rfkill poll and every block/unblock this plugin runs.
+[[service]]
+id = "svc"
+entry = "service.luau"
+
+# Control-center tile: lit while every radio is blocked.
+[[shortcut]]
+id = "toggle"
+entry = "shortcut.luau"

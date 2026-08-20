@@ -78,3 +78,16 @@ icon = "device-airpods"
 description = "AirPods battery, ear detection and noise control in the bar, through the librepods daemon."
 plugin_api = 23
 tags = ["bar", "battery", "bluetooth", "panel", "service"]
+
+[[plugin]]
+id = "tommyothen/airplane-mode"
+name = "Airplane Mode"
+version = "0.1.0"
+updated_at = 1786800000
+added_at = 1786800000
+author = "tommyothen"
+license = "MIT"
+icon = "plane"
+description = "Block and unblock every radio in one tap, phone-style airplane mode over rfkill."
+plugin_api = 23
+tags = ["shortcut", "network", "bluetooth", "service", "system", "utility"]
