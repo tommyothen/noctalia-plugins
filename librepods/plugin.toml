@@ -73,6 +73,26 @@ entry = "widget.luau"
   description_key = "settings.hide_when_disconnected.description"
   default = true
 
+# Enhanced volume tile: the built-in volume face until AirPods connect, then
+# the AirPods glyph with battery in the tooltip. Scroll and right click map to
+# the shell's own volume actions so stepping and OSD match the built-in widget;
+# click opens the AirPods panel while connected, the audio section otherwise.
+[[widget]]
+id = "volume"
+entry = "volume_widget.luau"
+
+  [widget.actions]
+  scroll_up = "volume-up"
+  scroll_down = "volume-down"
+  right = "volume-mute"
+
+  [[widget.setting]]
+  key = "show_percent"
+  type = "bool"
+  label_key = "settings.show_percent.label"
+  description_key = "settings.show_percent.description"
+  default = false
+
 # Battery detail, the noise control selector and the conversation awareness toggle.
 [[panel]]
 id = "status"

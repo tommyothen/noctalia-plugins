@@ -1,5 +1,4 @@
 {
-  "title": "LibrePods",
   "component": {
     "case": "Case",
     "headphone": "Headphones",
@@ -27,14 +26,6 @@
     "daemon_down": "librepods is not running",
     "disconnected": "No AirPods connected"
   },
-  "widget": {
-    "charging": "charging",
-    "connected": "Connected",
-    "daemon_down": "librepods is not running",
-    "disconnected": "No AirPods connected",
-    "mode": "Noise control",
-    "panel_failed": "Could not open the panel"
-  },
   "settings": {
     "glyph": {
       "description": "Bar icon for the widget",
@@ -51,6 +42,23 @@
     "poll_interval_ms": {
       "description": "How often to re-read the daemon's state file",
       "label": "Refresh"
+    },
+    "show_percent": {
+      "description": "Show the volume percentage next to the icon",
+      "label": "Show Percentage"
     }
+  },
+  "title": "LibrePods",
+  "volume": {
+    "muted": "muted",
+    "volume": "Volume"
+  },
+  "widget": {
+    "charging": "charging",
+    "connected": "Connected",
+    "daemon_down": "librepods is not running",
+    "disconnected": "No AirPods connected",
+    "mode": "Noise control",
+    "panel_failed": "Could not open the panel"
   }
 }
