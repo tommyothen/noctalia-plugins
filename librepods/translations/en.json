@@ -1,0 +1,56 @@
+{
+  "title": "LibrePods",
+  "component": {
+    "case": "Case",
+    "headphone": "Headphones",
+    "left": "Left",
+    "right": "Right"
+  },
+  "ear": {
+    "disconnected": "disconnected",
+    "in_case": "in case",
+    "in_ear": "in ear",
+    "out_of_ear": "out of ear"
+  },
+  "error": {
+    "command_failed": "The librepods command failed."
+  },
+  "mode": {
+    "adaptive": "Adaptive",
+    "noise_cancellation": "ANC",
+    "off": "Off",
+    "transparency": "Transparency"
+  },
+  "panel": {
+    "connected": "Connected",
+    "conversation_awareness": "Conversation awareness",
+    "daemon_down": "librepods is not running",
+    "disconnected": "No AirPods connected"
+  },
+  "widget": {
+    "charging": "charging",
+    "connected": "Connected",
+    "daemon_down": "librepods is not running",
+    "disconnected": "No AirPods connected",
+    "mode": "Noise control",
+    "panel_failed": "Could not open the panel"
+  },
+  "settings": {
+    "glyph": {
+      "description": "Bar icon for the widget",
+      "label": "Icon"
+    },
+    "hide_when_disconnected": {
+      "description": "Remove the tile from the bar entirely while no AirPods are connected, instead of dimming it",
+      "label": "Hide When Disconnected"
+    },
+    "librepods_binary": {
+      "description": "The librepods CLI used for control commands; a bare name resolves through PATH",
+      "label": "librepods Binary"
+    },
+    "poll_interval_ms": {
+      "description": "How often to re-read the daemon's state file",
+      "label": "Refresh"
+    }
+  }
+}

@@ -65,3 +65,16 @@ icon = "rotate-clockwise"
 description = "Rotate a monitor between landscape and portrait with one click, for watching vertical content."
 plugin_api = 23
 tags = ["bar", "indicator", "display", "monitor", "service", "shortcut", "utility"]
+
+[[plugin]]
+id = "tommyothen/librepods"
+name = "LibrePods"
+version = "0.1.0"
+updated_at = 1786700000
+added_at = 1786700000
+author = "tommyothen"
+license = "MIT"
+icon = "device-airpods"
+description = "AirPods battery, ear detection and noise control in the bar, through the librepods daemon."
+plugin_api = 23
+tags = ["bar", "battery", "bluetooth", "panel", "service"]

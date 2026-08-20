@@ -1,0 +1,84 @@
+# LibrePods. AirPods battery, ear detection and noise control in the bar.
+#
+# The librepods daemon holds the one L2CAP connection AirPods allow, so nothing
+# here talks Bluetooth. The daemon mirrors every device event into
+# $XDG_RUNTIME_DIR/librepods/state.json (rewritten atomically) and takes
+# commands through a one-shot `librepods ctl` CLI. A headless [[service]] is the
+# only entry that touches either: it polls the state file with readFileAsync,
+# publishes a normalized snapshot to plugin state, and runs control commands for
+# the other entries, re-polling immediately on completion so the UI catches up
+# in one beat rather than at the next interval. The bar [[widget]] and the
+# [[panel]] are pure subscribers that send commands back through a shared state
+# key, the same channel away-mode uses.
+#
+# A missing state file means the daemon is not running, which is a different
+# story from a file that says connected = false (daemon up, AirPods elsewhere).
+# The snapshot carries both flags so the widget and panel can tell them apart.
+
+id = "tommyothen/librepods"
+name = "LibrePods"
+version = "0.1.0"
+plugin_api = 23
+author = "tommyothen"
+license = "MIT"
+icon = "device-airpods"
+dependencies = ["librepods"]
+tags = ["bar", "battery", "bluetooth", "panel", "service"]
+description = "AirPods battery, ear detection and noise control in the bar, through the librepods daemon."
+
+# ── Polling ───────────────────────────────────────────────────────────────────
+
+# One readFileAsync per tick against a tmpfs file, so this can sit at 1.5 s
+# without showing up anywhere. Control commands re-poll on their own.
+[[setting]]
+key = "poll_interval_ms"
+type = "int"
+label_key = "settings.poll_interval_ms.label"
+description_key = "settings.poll_interval_ms.description"
+default = 1500
+min = 500
+max = 10000
+step = 250
+
+# The ctl binary. A bare name resolves through PATH; point it at an absolute
+# path when librepods lives outside the shell's environment.
+[[setting]]
+key = "librepods_binary"
+type = "string"
+label_key = "settings.librepods_binary.label"
+description_key = "settings.librepods_binary.description"
+default = "librepods"
+
+# Owns the state file read and every command this plugin runs.
+[[service]]
+id = "svc"
+entry = "service.luau"
+
+# Bar presence: the lowest bud battery next to an earbuds glyph.
+[[widget]]
+id = "airpods"
+entry = "widget.luau"
+
+  [[widget.setting]]
+  key = "glyph"
+  type = "glyph"
+  label_key = "settings.glyph.label"
+  description_key = "settings.glyph.description"
+  default = "device-airpods"
+
+  [[widget.setting]]
+  key = "hide_when_disconnected"
+  type = "bool"
+  label_key = "settings.hide_when_disconnected.label"
+  description_key = "settings.hide_when_disconnected.description"
+  default = true
+
+# Battery detail, the noise control selector and the conversation awareness toggle.
+[[panel]]
+id = "status"
+entry = "panel.luau"
+width = 380
+height = 340
+placement = "attached"
+position = "auto"
+dismiss_on_outside_click = true
