@@ -93,6 +93,13 @@ entry = "volume_widget.luau"
   description_key = "settings.show_percent.description"
   default = false
 
+# Control-center tile: lit while connected, worst bud battery as the label,
+# opens the panel. The control center has no plugin tabs, so this is the
+# closest thing to a LibrePods presence inside SUPER+S.
+[[shortcut]]
+id = "airpods-panel"
+entry = "shortcut.luau"
+
 # Battery detail, the noise control selector and the conversation awareness toggle.
 [[panel]]
 id = "status"
