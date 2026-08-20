@@ -91,7 +91,7 @@ entry = "volume_widget.luau"
   type = "bool"
   label_key = "settings.show_percent.label"
   description_key = "settings.show_percent.description"
-  default = false
+  default = true
 
 # Control-center tile: lit while connected, worst bud battery as the label,
 # opens the panel. The control center has no plugin tabs, so this is the
