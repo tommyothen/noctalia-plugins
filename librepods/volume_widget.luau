@@ -79,18 +79,25 @@ local function render()
   local snap = snapshot()
   local connected = airpodsConnected(snap)
 
-  barWidget.setGlyph(connected and "device-airpods" or volumeGlyph())
   local role = muted and "on_surface_variant" or "on_surface"
-  barWidget.setGlyphColor(role)
-  barWidget.setColor(role)
+  local glyphName = connected and "device-airpods" or volumeGlyph()
 
-  -- Bare number, no suffix: the built-in brightness and battery tiles show
-  -- "65" and "98", so "55%" reads out of place next to them.
+  -- A render tree instead of setGlyph/setText: the host draws plugin bar text
+  -- at fontSizeBody (14) while the built-in tiles drop to fontSizeCaption (13)
+  -- on a vertical bar, so the label looked oversized next to brightness and
+  -- battery. Glyph 16 and caption 13 mirror the built-ins' constants.
+  local children = {
+    ui.glyph({ name = glyphName, size = 16, color = role }),
+  }
   if noctalia.getConfig("show_percent") == true and volumePercent ~= nil then
-    barWidget.setText(tostring(volumePercent))
-  else
-    barWidget.setText("")
+    table.insert(children, ui.label({
+      text = tostring(volumePercent),
+      fontSize = 13,
+      color = role,
+    }))
   end
+  local ctor = barWidget.isVertical() and ui.column or ui.row
+  barWidget.render(ctor({ gap = 2, align = "center" }, children))
 
   local rows = {}
   local volumeValue = volumePercent ~= nil and `{volumePercent}%` or "?"
